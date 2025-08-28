@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './LogPro.css';
 
-const LogPro = () => {
+const LogPro = ({ onNavigate }) => {
   const [formData, setFormData] = useState({
     identifier: '',
     password: '',
@@ -30,6 +30,12 @@ const LogPro = () => {
   return (
     <div className="login-page">
       <div className="login-container-full">
+        {/* Bouton retour */}
+        <button className="back-button-pro" onClick={() => onNavigate('home')}>
+          <span className="back-arrow">←</span>
+          <span className="back-text">Retour à l'accueil</span>
+        </button>
+
         {/* Panneau gauche - Image complète */}
         <div className="login-left-image">
           <div className="image-overlay">
@@ -38,12 +44,6 @@ const LogPro = () => {
               alt="Illustration de sécurité - Gestion d'accès"
               className="main-illustration"
             />
-            <div className="overlay-content">
-              <h1 className="welcome-title-overlay">Hilton Yaoundé</h1>
-              <p className="welcome-subtitle-overlay">
-                Système de gestion sécurisé des factures clients
-              </p>
-            </div>
           </div>
         </div>
 
@@ -60,7 +60,7 @@ const LogPro = () => {
           <form onSubmit={handleSubmit} className="login-form-adapted">
             <div className="form-group-adapted">
               <label htmlFor="identifier" className="form-label-adapted">
-                <span className="label-icon">👤</span>
+                <span className="label-icon">🏢</span>
                 Identifiant
               </label>
               <input
@@ -101,13 +101,13 @@ const LogPro = () => {
                 onChange={handleChange}
               />
               <label htmlFor="rememberMe" className="checkbox-label-adapted">
-                Maintenir la session active
+                Se souvenir de moi
               </label>
             </div>
 
             <button type="submit" className="btn-primary-adapted">
-              <span className="btn-icon">🔐</span>
-              ACCÉDER AU SYSTÈME
+              <span className="btn-icon"></span>
+              Connexion
             </button>
 
             <div className="forgot-password-adapted">
@@ -132,9 +132,6 @@ const LogPro = () => {
             )}
           </form>
 
-          <div className="footer-branding">
-            <p>Hilton Yaoundé - Système sécurisé</p>
-          </div>
         </div>
       </div>
     </div>

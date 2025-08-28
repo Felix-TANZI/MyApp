@@ -10,6 +10,46 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
+  position: relative;
+}
+
+/* Bouton retour version pro */
+.back-button-pro {
+  position: absolute;
+  top: 30px;
+  left: 40px;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(15, 76, 140, 0.2);
+  border-radius: 12px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #0F4C8C;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-decoration: none;
+  font-family: inherit;
+}
+
+.back-button-pro:hover {
+  background: #0F4C8C;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(15, 76, 140, 0.3);
+}
+
+.back-arrow {
+  font-size: 16px;
+  transition: transform 0.3s ease;
+}
+
+.back-button-pro:hover .back-arrow {
+  transform: translateX(-3px);
 }
 
 /* Container principal adapté pour l'image complète */
@@ -61,16 +101,27 @@
   z-index: 2;
   text-align: center;
   background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  padding: 25px;
-  border-radius: 16px;
+  backdrop-filter: blur(15px);
+  padding: 30px;
+  border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 25px rgba(15, 76, 140, 0.1);
+}
+
+.overlay-icon-pro {
+  font-size: 32px;
+  margin-bottom: 15px;
+  background: linear-gradient(135deg, #0F4C8C 0%, #4299e1 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 4px rgba(15, 76, 140, 0.1));
 }
 
 .welcome-title-overlay {
   font-size: 28px;
   font-weight: 700;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   color: #0F4C8C;
   text-shadow: 0 2px 8px rgba(15, 76, 140, 0.1);
 }
@@ -78,8 +129,32 @@
 .welcome-subtitle-overlay {
   font-size: 14px;
   color: #4a5568;
-  margin: 0;
+  margin-bottom: 20px;
   line-height: 1.5;
+}
+
+.pro-features {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.pro-feature-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+  padding: 6px 12px;
+  background: rgba(15, 76, 140, 0.05);
+  border-radius: 15px;
+  border: 1px solid rgba(15, 76, 140, 0.1);
+}
+
+.feature-icon {
+  font-size: 14px;
 }
 
 /* Panneau droite adapté */
@@ -296,7 +371,23 @@
 .footer-branding p {
   font-size: 12px;
   color: #a0aec0;
-  margin: 0;
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+
+.security-badges-pro {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.security-badge-pro {
+  font-size: 10px;
+  background: rgba(66, 153, 225, 0.1);
+  color: #0F4C8C;
+  padding: 4px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(66, 153, 225, 0.2);
   font-weight: 500;
 }
 
@@ -315,11 +406,16 @@
     bottom: 30px;
     left: 30px;
     right: 30px;
-    padding: 20px;
+    padding: 25px;
   }
   
   .welcome-title-overlay {
     font-size: 24px;
+  }
+  
+  .back-button-pro {
+    top: 20px;
+    left: 20px;
   }
 }
 
@@ -348,7 +444,7 @@
   .overlay-content {
     position: static;
     margin-top: 20px;
-    padding: 15px;
+    padding: 20px;
   }
   
   .welcome-title-overlay {
@@ -365,6 +461,21 @@
   
   .form-title-adapted {
     font-size: 20px;
+  }
+  
+  .back-button-pro {
+    position: static;
+    margin-bottom: 20px;
+    align-self: flex-start;
+  }
+  
+  .pro-features {
+    gap: 10px;
+  }
+  
+  .pro-feature-item {
+    font-size: 11px;
+    padding: 5px 10px;
   }
 }
 
