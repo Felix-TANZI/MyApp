@@ -19,7 +19,7 @@ const LogPro = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // Nous allons allons implanter le logique de connexion plus tard
+    // Nous allons implanter la logique de connexion plus tard
     console.log('Professional Login:', formData);
   };
 
@@ -29,62 +29,70 @@ const LogPro = () => {
 
   return (
     <div className="login-page">
-      <div className="login-container">
-        {/* Panneau gauche */}
-        <div className="login-left">
-          <div className="animated-background"></div>
-          <div className="welcome-content">
-            <div className="auth-icon">
-              🔐
+      <div className="login-container-full">
+        {/* Panneau gauche - Image complète */}
+        <div className="login-left-image">
+          <div className="image-overlay">
+            <img 
+              src="/image/auth.png" 
+              alt="Illustration de sécurité - Gestion d'accès"
+              className="main-illustration"
+            />
+            <div className="overlay-content">
+              <h1 className="welcome-title-overlay">Hilton Yaoundé</h1>
+              <p className="welcome-subtitle-overlay">
+                Système de gestion sécurisé des factures clients
+              </p>
             </div>
-            <h1 className="welcome-title">Bienvenue</h1>
-            <p className="welcome-subtitle">
-              Accédez à votre espace professionnel pour gérer les factures clients
-            </p>
           </div>
         </div>
 
-        {/* Panneau droite */}
-        <div className="login-right">
-          <div className="form-header">
-            <h2 className="form-title">Espace Professionnel</h2>
-            <p className="form-subtitle">Connectez-vous à votre compte</p>
+        {/* Panneau droite - Formulaire adapté */}
+        <div className="login-right-adapted">
+          <div className="form-header-adapted">
+            <div className="hilton-brand">
+              <h2 className="form-title-adapted">Espace Professionnel</h2>
+              <div className="brand-line"></div>
+            </div>
+            <p className="form-subtitle-adapted">Administration • Commercial • Comptabilité</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="login-form">
-            <div className="form-group">
-              <label htmlFor="identifier" className="form-label">
+          <form onSubmit={handleSubmit} className="login-form-adapted">
+            <div className="form-group-adapted">
+              <label htmlFor="identifier" className="form-label-adapted">
+                <span className="label-icon">👤</span>
                 Identifiant
               </label>
               <input
                 type="text"
                 id="identifier"
                 name="identifier"
-                className="form-input"
-                placeholder="Pseudo, email professionnel ou matricule"
+                className="form-input-adapted"
+                placeholder="Pseudo, email ou matricule"
                 value={formData.identifier}
                 onChange={handleChange}
                 required
               />
             </div>
 
-            <div className="form-group">
-              <label htmlFor="password" className="form-label">
+            <div className="form-group-adapted">
+              <label htmlFor="password" className="form-label-adapted">
+                <span className="label-icon">🔒</span>
                 Mot de passe
               </label>
               <input
                 type="password"
                 id="password"
                 name="password"
-                className="form-input"
-                placeholder="Entrez votre mot de passe"
+                className="form-input-adapted"
+                placeholder="Votre mot de passe sécurisé"
                 value={formData.password}
                 onChange={handleChange}
                 required
               />
             </div>
 
-            <div className="checkbox-group">
+            <div className="checkbox-group-adapted">
               <input
                 type="checkbox"
                 id="rememberMe"
@@ -92,33 +100,41 @@ const LogPro = () => {
                 checked={formData.rememberMe}
                 onChange={handleChange}
               />
-              <label htmlFor="rememberMe" className="checkbox-label">
-                Se souvenir de moi
+              <label htmlFor="rememberMe" className="checkbox-label-adapted">
+                Maintenir la session active
               </label>
             </div>
 
-            <button type="submit" className="btn-primary">
-              SE CONNECTER
+            <button type="submit" className="btn-primary-adapted">
+              <span className="btn-icon">🔐</span>
+              ACCÉDER AU SYSTÈME
             </button>
 
-            <div className="forgot-password">
+            <div className="forgot-password-adapted">
               <button 
                 type="button" 
-                className="forgot-link"
+                className="forgot-link-adapted"
                 onClick={handleForgotPassword}
               >
-                Mot de passe oublié ?
+                Problème d'accès ?
               </button>
             </div>
 
             {showAdminMessage && (
-              <div className="admin-message">
-                <strong>Information :</strong> Pour réinitialiser votre mot de passe, 
-                veuillez contacter l'administrateur système à l'adresse : 
-                <strong> admin@hilton.com</strong>
+              <div className="admin-message-adapted">
+                <div className="message-icon">ℹ️</div>
+                <div className="message-content">
+                  <strong>Support Technique</strong>
+                  <p>Contactez l'administrateur système :</p>
+                  <strong>admin@hilton-yaounde.com</strong>
+                </div>
               </div>
             )}
           </form>
+
+          <div className="footer-branding">
+            <p>Hilton Yaoundé - Système sécurisé</p>
+          </div>
         </div>
       </div>
     </div>
