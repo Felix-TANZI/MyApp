@@ -499,3 +499,36 @@
     max-height: 85%;
   }
 }
+
+/* Message d'erreur professionnel */
+.error-message-pro {
+  background: linear-gradient(135deg, #fef2f2 0%, #fecaca 20%);
+  border: 2px solid #f87171;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  box-shadow: 0 4px 15px rgba(248, 113, 113, 0.1);
+}
+
+.error-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.error-text {
+  color: #dc2626;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* États désactivés */
+.form-input-adapted:disabled,
+.btn-primary-adapted:disabled,
+.forgot-link-adapted:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

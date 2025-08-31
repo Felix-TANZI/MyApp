@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import './LogPro.css';
 
 const LogPro = ({ onNavigate }) => {
@@ -8,6 +9,16 @@ const LogPro = ({ onNavigate }) => {
     rememberMe: false
   });
   const [showAdminMessage, setShowAdminMessage] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { loginProfessional, error, clearError, loading } = useAuth();
+
+  // Effacer les erreurs au changement de champ
+  useEffect(() => {
+    if (error) {
+      clearError();
+    }
+  }, [formData.identifier, formData.password]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -17,10 +28,26 @@ const LogPro = ({ onNavigate }) => {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Nous allons implanter la logique de connexion plus tard
-    console.log('Professional Login:', formData);
+    setIsSubmitting(true);
+
+    try {
+      const result = await loginProfessional({
+        identifier: formData.identifier,
+        password: formData.password,
+        rememberMe: formData.rememberMe
+      });
+
+      if (result.success) {
+        console.log('Connexion professionnelle réussie');
+        // La redirection sera gérée automatiquement par le contexte d'auth
+      }
+    } catch (error) {
+      console.error('Erreur lors de la connexion:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleForgotPassword = () => {
@@ -58,6 +85,14 @@ const LogPro = ({ onNavigate }) => {
           </div>
 
           <form onSubmit={handleSubmit} className="login-form-adapted">
+            {/* Affichage des erreurs */}
+            {error && (
+              <div className="error-message-pro">
+                <div className="error-icon">⚠️</div>
+                <div className="error-text">{error}</div>
+              </div>
+            )}
+
             <div className="form-group-adapted">
               <label htmlFor="identifier" className="form-label-adapted">
                 <span className="label-icon">🏢</span>
@@ -71,6 +106,7 @@ const LogPro = ({ onNavigate }) => {
                 placeholder="Pseudo, email ou matricule"
                 value={formData.identifier}
                 onChange={handleChange}
+                disabled={isSubmitting || loading}
                 required
               />
             </div>
@@ -88,6 +124,7 @@ const LogPro = ({ onNavigate }) => {
                 placeholder="Votre mot de passe sécurisé"
                 value={formData.password}
                 onChange={handleChange}
+                disabled={isSubmitting || loading}
                 required
               />
             </div>
@@ -99,15 +136,29 @@ const LogPro = ({ onNavigate }) => {
                 name="rememberMe"
                 checked={formData.rememberMe}
                 onChange={handleChange}
+                disabled={isSubmitting || loading}
               />
               <label htmlFor="rememberMe" className="checkbox-label-adapted">
                 Se souvenir de moi
               </label>
             </div>
 
-            <button type="submit" className="btn-primary-adapted">
-              <span className="btn-icon"></span>
-              Connexion
+            <button 
+              type="submit" 
+              className="btn-primary-adapted"
+              disabled={isSubmitting || loading}
+            >
+              {isSubmitting || loading ? (
+                <>
+                  <span className="btn-icon">⏳</span>
+                  CONNEXION...
+                </>
+              ) : (
+                <>
+                  <span className="btn-icon"></span>
+                  Se connecter
+                </>
+              )}
             </button>
 
             <div className="forgot-password-adapted">
@@ -115,6 +166,7 @@ const LogPro = ({ onNavigate }) => {
                 type="button" 
                 className="forgot-link-adapted"
                 onClick={handleForgotPassword}
+                disabled={isSubmitting || loading}
               >
                 Problème d'accès ?
               </button>
