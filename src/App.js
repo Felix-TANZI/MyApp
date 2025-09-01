@@ -3,7 +3,8 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import HomePage from './Compo/HomePage';
 import LogPro from './Compo/LogPro';
 import LogClient from './Compo/LogClient';
-import Dashboard from './Compo/Dashboard'; // À ameliorer par la suite, nous avons juste une version test
+import DashboardProfessional from './Compo/DashboardProfessional';
+import DashboardClient from './Compo/DashboardClient';
 import './App.css';
 
 // Composant principal avec logique de navigation
@@ -38,7 +39,12 @@ function AppContent() {
 
   // Si utilisateur connecté, afficher le dashboard approprié
   if (isAuthenticated) {
-    return <Dashboard onNavigate={handleNavigation} />;
+    // Dashboard séparé selon le type d'utilisateur
+    if (userType === 'professional') {
+      return <DashboardProfessional onNavigate={handleNavigation} />;
+    } else if (userType === 'client') {
+      return <DashboardClient onNavigate={handleNavigation} />;
+    }
   }
 
   // Sinon afficher les pages de connexion

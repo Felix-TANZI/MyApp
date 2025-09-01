@@ -179,8 +179,8 @@ const LogClient = ({ onNavigate }) => {
                     </>
                   ) : (
                     <>
-                      <span className="btn-icon-client">🔐</span>
-                      Connexion
+                      <span className="btn-icon-client"></span>
+                      Se Connecter
                     </>
                   )}
                 </button>
@@ -237,7 +237,7 @@ const LogClient = ({ onNavigate }) => {
                       id="resetEmail"
                       name="resetEmail"
                       className="form-input-adapted-client"
-                      placeholder="votre@email.com"
+                      placeholder="tanzifelix@gmail.com"
                       value={resetEmail}
                       onChange={(e) => setResetEmail(e.target.value)}
                       required
