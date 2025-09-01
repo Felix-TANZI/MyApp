@@ -133,6 +133,11 @@ const loginClient = async (req, res) => {
 
     const client = clients[0];
 
+    console.log('🔍 Tentative connexion:', identifier);
+    console.log('🔍 Utilisateur trouvé:', client ? 'OUI' : 'NON');
+    console.log('🔍 Mot de passe DB:', client?.mot_de_passe);
+    console.log('🔍 Mot de passe saisi:', password);
+
     // Vérifier le mot de passe, on utilise le meme principeque plus haut (Par contre la logique client on a pas encore implemente)
     const isValidPassword = await bcrypt.compare(password, client.mot_de_passe);
     

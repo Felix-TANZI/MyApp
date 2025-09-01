@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import './LogClient.css';
 
 const LogClient = ({ onNavigate }) => {
@@ -10,6 +11,16 @@ const LogClient = ({ onNavigate }) => {
   const [showForgotForm, setShowForgotForm] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { loginClient, error, clearError, loading } = useAuth();
+
+  // Effacer les erreurs au changement de champ
+  useEffect(() => {
+    if (error) {
+      clearError();
+    }
+  }, [formData.identifier, formData.password, clearError]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -19,14 +30,30 @@ const LogClient = ({ onNavigate }) => {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Nous allons implementer la logique de connexion
-    console.log('Client Login:', formData);
+    setIsSubmitting(true);
+
+    try {
+      const result = await loginClient({
+        identifier: formData.identifier,
+        password: formData.password,
+        rememberMe: formData.rememberMe
+      });
+
+      if (result.success) {
+        console.log('Connexion client réussie');
+        // La redirection sera gérée automatiquement par le contexte d'auth
+      }
+    } catch (error) {
+      console.error('Erreur lors de la connexion client:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleGoogleLogin = () => {
-    // Nous allons implementer une logique de connexion via d'authentification Google en utilisant propablement une API
+    // TODO: Implementer la logique de connexion Google
     console.log('Google Login initiated');
   };
 
@@ -36,7 +63,7 @@ const LogClient = ({ onNavigate }) => {
 
   const handleResetSubmit = (e) => {
     e.preventDefault();
-    // Logique de réinitialisation à implémenter
+    // TODO: Logique de réinitialisation à implémenter
     console.log('Reset password for:', resetEmail);
     setResetSent(true);
     
@@ -82,6 +109,14 @@ const LogClient = ({ onNavigate }) => {
               </div>
 
               <form onSubmit={handleSubmit} className="login-form-adapted-client">
+                {/* Affichage des erreurs */}
+                {error && (
+                  <div className="error-message-client">
+                    <div className="error-icon">⚠️</div>
+                    <div className="error-text">{error}</div>
+                  </div>
+                )}
+
                 <div className="form-group-adapted-client">
                   <label htmlFor="identifier" className="form-label-adapted-client">
                     <span className="label-icon-client">🆔</span>
@@ -95,6 +130,7 @@ const LogClient = ({ onNavigate }) => {
                     placeholder="Votre code client ou adresse email"
                     value={formData.identifier}
                     onChange={handleChange}
+                    disabled={isSubmitting || loading}
                     required
                   />
                 </div>
@@ -112,6 +148,7 @@ const LogClient = ({ onNavigate }) => {
                     placeholder="Votre mot de passe"
                     value={formData.password}
                     onChange={handleChange}
+                    disabled={isSubmitting || loading}
                     required
                   />
                 </div>
@@ -123,15 +160,29 @@ const LogClient = ({ onNavigate }) => {
                     name="rememberMe"
                     checked={formData.rememberMe}
                     onChange={handleChange}
+                    disabled={isSubmitting || loading}
                   />
                   <label htmlFor="rememberMe" className="checkbox-label-adapted-client">
                     Se souvenir de moi
                   </label>
                 </div>
 
-                <button type="submit" className="btn-primary-adapted-client">
-                  <span className="btn-icon-client"></span>
-                  Connexion
+                <button 
+                  type="submit" 
+                  className="btn-primary-adapted-client"
+                  disabled={isSubmitting || loading}
+                >
+                  {isSubmitting || loading ? (
+                    <>
+                      <span className="btn-icon-client">⏳</span>
+                      CONNEXION...
+                    </>
+                  ) : (
+                    <>
+                      <span className="btn-icon-client">🔐</span>
+                      Connexion
+                    </>
+                  )}
                 </button>
 
                 <div className="divider-client">
@@ -142,6 +193,7 @@ const LogClient = ({ onNavigate }) => {
                   type="button" 
                   className="btn-google-client"
                   onClick={handleGoogleLogin}
+                  disabled={isSubmitting || loading}
                 >
                   <div className="google-icon-client">G</div>
                   Se connecter avec Google
@@ -152,6 +204,7 @@ const LogClient = ({ onNavigate }) => {
                     type="button" 
                     className="forgot-link-adapted-client"
                     onClick={handleForgotPassword}
+                    disabled={isSubmitting || loading}
                   >
                     Mot de passe oublié ?
                   </button>
@@ -184,7 +237,7 @@ const LogClient = ({ onNavigate }) => {
                       id="resetEmail"
                       name="resetEmail"
                       className="form-input-adapted-client"
-                      placeholder="tanzifelix@exemple.com"
+                      placeholder="votre@email.com"
                       value={resetEmail}
                       onChange={(e) => setResetEmail(e.target.value)}
                       required
@@ -192,12 +245,11 @@ const LogClient = ({ onNavigate }) => {
                   </div>
 
                   <button type="submit" className="btn-primary-adapted-client reset-btn">
-                    <span className="btn-icon-client"></span>
+                    <span className="btn-icon-client">📧</span>
                     ENVOYER
                   </button>
                 </form>
               ) : (
-                // Ici,on implementera cette partie plus tard, il sera question d'envoyer un code dans la boite mail du client
                 <div className="reset-success">
                   <div className="success-icon">✅</div>
                   <p className="success-message">
