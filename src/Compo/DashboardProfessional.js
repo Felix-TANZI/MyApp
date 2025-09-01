@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import ClientsModule from './ClientsModule';
 import './DashboardProfessional.css';
 
 const DashboardProfessional = () => {
@@ -57,7 +58,7 @@ const DashboardProfessional = () => {
   const renderModuleContent = () => {
     switch(currentModule) {
       case 'overview':
-        return <OverviewModule user={user} />;
+        return <OverviewModule user={user} onNavigate={setCurrentModule} />;
       case 'clients':
         return <ClientsModule user={user} />;
       case 'invoices':
@@ -67,7 +68,7 @@ const DashboardProfessional = () => {
       case 'admin':
         return <AdminModule user={user} />;
       default:
-        return <OverviewModule user={user} />;
+        return <OverviewModule user={user} onNavigate={setCurrentModule} />;
     }
   };
 
@@ -155,8 +156,8 @@ const DashboardProfessional = () => {
   );
 };
 
-// Module Vue d'ensemble
-const OverviewModule = ({ user }) => {
+// Module Vue d'ensemble mis à jour avec actions rapides
+const OverviewModule = ({ user, onNavigate }) => {
   const [stats, setStats] = useState({
     totalClients: 0,
     totalFactures: 0,
@@ -164,19 +165,69 @@ const OverviewModule = ({ user }) => {
     facturesEnRetard: 0
   });
 
+  const [recentActivity, setRecentActivity] = useState([]);
+
   useEffect(() => {
-    // Par la suite nous allons Appeler une API pour récupérer les statistiques
     fetchStats();
+    fetchRecentActivity();
   }, []);
 
   const fetchStats = async () => {
-    // Pour l'instant on se contentera de Simuler les données
-    setStats({
-      totalClients: 25,
-      totalFactures: 142,
-      caRealise: 12750000,
-      facturesEnRetard: 3
-    });
+    try {
+      // Récupéreration des stats des clients
+      const clientsResponse = await fetch('http://localhost:5000/api/clients/stats', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (clientsResponse.ok) {
+        const clientsData = await clientsResponse.json();
+        setStats(prev => ({
+          ...prev,
+          totalClients: clientsData.data.total_clients
+        }));
+      }
+
+      // Nous allons Ajouter les stats des factures quand developperont le module
+      // On se contentera dans un premier temps sur une simulation des données
+      setStats(prev => ({
+        ...prev,
+        totalFactures: 142,
+        caRealise: 12750000,
+        facturesEnRetard: 3
+      }));
+    } catch (error) {
+      console.error('Erreur récupération stats:', error);
+    }
+  };
+
+  const fetchRecentActivity = async () => {
+    // Simulation de l'activité récente pour l'instant
+    setRecentActivity([
+      {
+        id: 1,
+        action: 'Client créé',
+        description: 'Nouveau client CAMTEL SA ajouté',
+        time: 'Il y a 2 heures',
+        icon: '👥'
+      },
+      {
+        id: 2,
+        action: 'Facture créée',
+        description: 'Facture HILT-2025-001 pour CAMTEL SA',
+        time: 'Il y a 3 heures',
+        icon: '📄'
+      },
+      {
+        id: 3,
+        action: 'Paiement reçu',
+        description: 'Paiement facture HILT-2025-002',
+        time: 'Il y a 4 heures',
+        icon: '💳'
+      }
+    ]);
   };
 
   const formatCurrency = (amount) => {
@@ -187,6 +238,37 @@ const OverviewModule = ({ user }) => {
       maximumFractionDigits: 0
     }).format(amount);
   };
+
+  const quickActions = [
+    {
+      id: 'new-client',
+      name: 'Nouveau client',
+      icon: '👥',
+      action: () => onNavigate('clients'),
+      color: 'green'
+    },
+    {
+      id: 'new-invoice',
+      name: 'Créer une facture',
+      icon: '📄',
+      action: () => onNavigate('invoices'),
+      color: 'blue'
+    },
+    {
+      id: 'record-payment',
+      name: 'Enregistrer un paiement',
+      icon: '💳',
+      action: () => onNavigate('payments'),
+      color: 'purple'
+    },
+    {
+      id: 'view-reports',
+      name: 'Voir les rapports',
+      icon: '📊',
+      action: () => console.log('Rapports'),
+      color: 'orange'
+    }
+  ];
 
   return (
     <div className="overview-module">
@@ -227,56 +309,46 @@ const OverviewModule = ({ user }) => {
       <div className="quick-actions">
         <h2>Actions rapides</h2>
         <div className="action-cards">
-          <button className="action-card">
-            <span className="action-icon">➕</span>
-            <span>Nouveau client</span>
-          </button>
-          <button className="action-card">
-            <span className="action-icon">📄</span>
-            <span>Créer une facture</span>
-          </button>
-          <button className="action-card">
-            <span className="action-icon">💳</span>
-            <span>Enregistrer un paiement</span>
-          </button>
+          {quickActions.map((action) => (
+            <button 
+              key={action.id}
+              className={`action-card ${action.color}`}
+              onClick={action.action}
+            >
+              <span className="action-icon">{action.icon}</span>
+              <span>{action.name}</span>
+            </button>
+          ))}
         </div>
       </div>
 
       <div className="recent-activity">
         <h2>Activité récente</h2>
         <div className="activity-list">
-          <div className="activity-item">
-            <div className="activity-icon">📄</div>
-            <div className="activity-content">
-              <p>Facture HILT-2025-001 créée pour CAMTEL SA</p>
-              <span className="activity-time">Il y a 2 heures</span>
+          {recentActivity.map((item) => (
+            <div key={item.id} className="activity-item">
+              <div className="activity-icon">{item.icon}</div>
+              <div className="activity-content">
+                <p><strong>{item.action}:</strong> {item.description}</p>
+                <span className="activity-time">{item.time}</span>
+              </div>
             </div>
-          </div>
-          <div className="activity-item">
-            <div className="activity-icon">💳</div>
-            <div className="activity-content">
-              <p>Paiement reçu - Facture HILT-2025-002</p>
-              <span className="activity-time">Il y a 4 heures</span>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>
   );
 };
 
-// Modules temporaires, nous le développeront par la suite
-const ClientsModule = ({ user }) => (
-  <div className="module-placeholder">
-    <h2>Module Clients</h2>
-    <p>Interface de gestion des clients en cours de développement...</p>
-  </div>
-);
-
+// Modules temporaires, nous les développerons par la suite
 const InvoicesModule = ({ user }) => (
   <div className="module-placeholder">
     <h2>Module Factures</h2>
     <p>Interface de gestion des factures en cours de développement...</p>
+    <div className="coming-soon-badge">
+      <span className="badge-icon">🚀</span>
+      <span>Prochainement disponible</span>
+    </div>
   </div>
 );
 
@@ -284,6 +356,10 @@ const PaymentsModule = ({ user }) => (
   <div className="module-placeholder">
     <h2>Module Paiements</h2>
     <p>Interface de gestion des paiements en cours de développement...</p>
+    <div className="coming-soon-badge">
+      <span className="badge-icon">🚀</span>
+      <span>Prochainement disponible</span>
+    </div>
   </div>
 );
 
@@ -291,6 +367,10 @@ const AdminModule = ({ user }) => (
   <div className="module-placeholder">
     <h2>Module Administration</h2>
     <p>Interface d'administration en cours de développement...</p>
+    <div className="coming-soon-badge">
+      <span className="badge-icon">🚀</span>
+      <span>Prochainement disponible</span>
+    </div>
   </div>
 );
 

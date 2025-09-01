@@ -507,7 +507,7 @@
   margin: 0;
 }
 
-/* ===== RESPONSIVE ===== */
+/*  RESPONSIVE  */
 @media (max-width: 1024px) {
   .sidebar.expanded {
     width: 240px;
@@ -654,4 +654,101 @@
   .recent-activity {
     padding: 20px;
   }
+}
+
+/* Actions rapides colorées */
+.action-card.green:hover {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+
+.action-card.blue:hover {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+}
+
+.action-card.purple:hover {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: white;
+}
+
+.action-card.orange:hover {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+}
+
+/* Badge "Prochainement disponible" */
+.coming-soon-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  padding: 12px 20px;
+  border-radius: 25px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 20px;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+}
+
+.badge-icon {
+  font-size: 16px;
+}
+
+/* Amélioration du module placeholder */
+.module-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 400px;
+  background: white;
+  border-radius: 16px;
+  padding: 48px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.module-placeholder h2 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 12px 0;
+}
+
+.module-placeholder p {
+  font-size: 18px;
+  color: #64748b;
+  margin: 0 0 24px 0;
+  max-width: 400px;
+}
+
+/* Activité récente améliorée */
+.activity-item {
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.activity-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: transparent;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+.activity-item:hover::before {
+  background: linear-gradient(to bottom, #3b82f6, #1d4ed8);
+}
+
+.activity-item:hover {
+  background: #f8fafc;
+  transform: translateX(5px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
 }

@@ -3,15 +3,16 @@ const cors = require('cors');
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-// Ici, on importe les routes notamment celle dans le fichier auth.js
+// Import des routes
 const authRoutes = require('./routes/auth');
+const clientsRoutes = require('./routes/clients');
 
 const app = express();
-const PORT = process.env.PORT || 5000;   // le serveur fonctionne sur le port 5000
+const PORT = process.env.PORT || 5000;
 
 // Configuration CORS
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3002',   // le frontend est sur le port 3002
+  origin: process.env.FRONTEND_URL || 'http://localhost:3002',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -58,11 +59,22 @@ app.get('/', (req, res) => {
     endpoints: [
       'GET /',
       'GET /api/health',
+      
+      // Auth endpoints
       'POST /api/auth/login/professional',
       'POST /api/auth/login/client',
       'POST /api/auth/logout',
       'GET /api/auth/profile',
-      'GET /api/auth/verify'
+      'GET /api/auth/verify',
+      
+      // Clients endpoints
+      'GET /api/clients',
+      'GET /api/clients/stats',
+      'GET /api/clients/:id',
+      'POST /api/clients',
+      'PUT /api/clients/:id',
+      'DELETE /api/clients/:id',
+      'POST /api/clients/:id/toggle-status'
     ],
     timestamp: new Date().toISOString()
   });
@@ -80,6 +92,9 @@ app.get('/api/health', async (req, res) => {
 // Routes d'authentification
 app.use('/api/auth', authRoutes);
 
+// Routes de gestion des clients
+app.use('/api/clients', clientsRoutes);
+
 // Route 404
 app.use('*', (req, res) => {
   res.status(404).json({
@@ -89,7 +104,9 @@ app.use('*', (req, res) => {
       'GET /',
       'GET /api/health',
       'POST /api/auth/login/professional',
-      'POST /api/auth/login/client'
+      'POST /api/auth/login/client',
+      'GET /api/clients',
+      'POST /api/clients'
     ]
   });
 });
@@ -140,6 +157,10 @@ async function startServer() {
       console.log('- POST /api/auth/login/client')
       console.log('- POST /api/auth/logout')
       console.log('- GET  /api/auth/profile')
+      console.log('- GET  /api/clients')
+      console.log('- POST /api/clients')
+      console.log('- PUT  /api/clients/:id')
+      console.log('- DELETE /api/clients/:id')
       console.log('================================\n');
     });
     

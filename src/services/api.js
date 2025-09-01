@@ -19,7 +19,7 @@ class ApiService {
     return headers;
   }
 
-  // Méthode générique pour les appels API
+  // Méthode pour les appels API
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
     
@@ -117,7 +117,7 @@ class ApiService {
     }
   }
 
-  // Vérifier si connecté
+  // Vérification si connecté
   async verifyAuth() {
     if (!this.getToken()) {
       return { success: false, message: 'Aucun token' };
@@ -132,14 +132,14 @@ class ApiService {
     }
   }
 
-  // Récupérer le profil
+  // Récupéreration du profil
   async getProfile() {
     return await this.request('/auth/profile');
   }
 
   // UTILITAIRES 
 
-  // Récupérer les infos utilisateur stockées
+  // Récupéreration des infos utilisateur stockées
   getCurrentUser() {
     const profile = localStorage.getItem('userProfile');
     const userType = localStorage.getItem('userType');
@@ -153,35 +153,35 @@ class ApiService {
     return null;
   }
 
-  // Vérifier si utilisateur connecté
+  // Vérification si utilisateur connecté
   isAuthenticated() {
     return !!this.getToken();
   }
 
-  // Vérifier le type d'utilisateur
+  // Vérification du type d'utilisateur
   getUserType() {
     return localStorage.getItem('userType');
   }
 
-  // Vérifier si admin
+  // Vérificatiion si admin
   isAdmin() {
     const user = this.getCurrentUser();
     return user && user.role === 'admin';
   }
 
-  // Vérifier si commercial
+  // Vérification si commercial
   isCommercial() {
     const user = this.getCurrentUser();
     return user && (user.role === 'commercial' || user.role === 'admin');
   }
 
-  // Vérifier si comptable
+  // Vérification si comptable
   isComptable() {
     const user = this.getCurrentUser();
     return user && (user.role === 'comptable' || user.role === 'admin');
   }
 
-  // Vérifier si client
+  // Vérification si client
   isClient() {
     return this.getUserType() === 'client';
   }
