@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ClientsModule from './ClientsModule';
+import InvoicesModule from './InvoicesModule';
 import './DashboardProfessional.css';
 
 const DashboardProfessional = () => {
@@ -25,7 +26,7 @@ const DashboardProfessional = () => {
       color: 'from-green-500 to-green-600'
     },
     {
-      id: 'invoices',
+      id: 'invoices', 
       name: 'Factures',
       icon: '📄',
       description: 'Création et gestion des factures',
@@ -156,7 +157,7 @@ const DashboardProfessional = () => {
   );
 };
 
-// Module Vue d'ensemble mis à jour avec actions rapides
+// Module Vue d'ensemble avec actions rapides
 const OverviewModule = ({ user, onNavigate }) => {
   const [stats, setStats] = useState({
     totalClients: 0,
@@ -190,14 +191,24 @@ const OverviewModule = ({ user, onNavigate }) => {
         }));
       }
 
-      // Nous allons Ajouter les stats des factures quand developperont le module
-      // On se contentera dans un premier temps sur une simulation des données
-      setStats(prev => ({
-        ...prev,
-        totalFactures: 142,
-        caRealise: 12750000,
-        facturesEnRetard: 3
-      }));
+      // Récupération des stats des factures
+      const invoicesResponse = await fetch('http://localhost:5000/api/invoices/stats', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (invoicesResponse.ok) {
+        const invoicesData = await invoicesResponse.json();
+        setStats(prev => ({
+          ...prev,
+          totalFactures: invoicesData.data.total_factures,
+          caRealise: invoicesData.data.ca_realise,
+          facturesEnRetard: invoicesData.data.en_retard
+        }));
+      }
+
     } catch (error) {
       console.error('Erreur récupération stats:', error);
     }
@@ -208,22 +219,22 @@ const OverviewModule = ({ user, onNavigate }) => {
     setRecentActivity([
       {
         id: 1,
+        action: 'Facture créée',
+        description: 'Facture HILT-2025-001 pour CAMTEL SA',
+        time: 'Il y a 1 heure',
+        icon: '📄'
+      },
+      {
+        id: 2,
         action: 'Client créé',
-        description: 'Nouveau client CAMTEL SA ajouté',
+        description: 'Nouveau client Orange Cameroun ajouté',
         time: 'Il y a 2 heures',
         icon: '👥'
       },
       {
-        id: 2,
-        action: 'Facture créée',
-        description: 'Facture HILT-2025-001 pour CAMTEL SA',
-        time: 'Il y a 3 heures',
-        icon: '📄'
-      },
-      {
         id: 3,
         action: 'Paiement reçu',
-        description: 'Paiement facture HILT-2025-002',
+        description: 'Paiement facture HILT-2024-089',
         time: 'Il y a 4 heures',
         icon: '💳'
       }
@@ -340,18 +351,7 @@ const OverviewModule = ({ user, onNavigate }) => {
   );
 };
 
-// Modules temporaires, nous les développerons par la suite
-const InvoicesModule = ({ user }) => (
-  <div className="module-placeholder">
-    <h2>Module Factures</h2>
-    <p>Interface de gestion des factures en cours de développement...</p>
-    <div className="coming-soon-badge">
-      <span className="badge-icon">🚀</span>
-      <span>Prochainement disponible</span>
-    </div>
-  </div>
-);
-
+// Modules temporaires (Paiements et Admin restent inchangés)
 const PaymentsModule = ({ user }) => (
   <div className="module-placeholder">
     <h2>Module Paiements</h2>

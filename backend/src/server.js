@@ -6,13 +6,14 @@ require('dotenv').config();
 // Import des routes
 const authRoutes = require('./routes/auth');
 const clientsRoutes = require('./routes/clients');
+const invoicesRoutes = require('./routes/invoices');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Configuration CORS
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3002',
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -74,7 +75,18 @@ app.get('/', (req, res) => {
       'POST /api/clients',
       'PUT /api/clients/:id',
       'DELETE /api/clients/:id',
-      'POST /api/clients/:id/toggle-status'
+      'POST /api/clients/:id/toggle-status',
+      
+      // Invoices endpoints
+      'GET /api/invoices',
+      'GET /api/invoices/stats',
+      'GET /api/invoices/:id',
+      'GET /api/invoices/:id/pdf',
+      'POST /api/invoices',
+      'POST /api/invoices/:id/duplicate',
+      'POST /api/invoices/:id/status',
+      'PUT /api/invoices/:id',
+      'DELETE /api/invoices/:id'
     ],
     timestamp: new Date().toISOString()
   });
@@ -95,6 +107,9 @@ app.use('/api/auth', authRoutes);
 // Routes de gestion des clients
 app.use('/api/clients', clientsRoutes);
 
+// Routes de gestion des factures
+app.use('/api/invoices', invoicesRoutes);
+
 // Route 404
 app.use('*', (req, res) => {
   res.status(404).json({
@@ -106,7 +121,9 @@ app.use('*', (req, res) => {
       'POST /api/auth/login/professional',
       'POST /api/auth/login/client',
       'GET /api/clients',
-      'POST /api/clients'
+      'POST /api/clients',
+      'GET /api/invoices',
+      'POST /api/invoices'
     ]
   });
 });
@@ -161,6 +178,11 @@ async function startServer() {
       console.log('- POST /api/clients')
       console.log('- PUT  /api/clients/:id')
       console.log('- DELETE /api/clients/:id')
+      console.log('- GET  /api/invoices')
+      console.log('- POST /api/invoices')
+      console.log('- PUT  /api/invoices/:id')
+      console.log('- DELETE /api/invoices/:id')
+      console.log('- GET  /api/invoices/:id/pdf')
       console.log('================================\n');
     });
     

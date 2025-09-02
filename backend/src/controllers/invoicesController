@@ -1,0 +1,780 @@
+const { query } = require('../utils/auth');
+
+// Constantes pour les calculs
+const TVA_RATE = 19.25; // TVA 19.25%
+
+// Fonctions utilitaires pour les calculs
+const calculateInvoiceAmounts = (lignes) => {
+  const montantHT = lignes.reduce((sum, ligne) => sum + parseFloat(ligne.montant_ligne || 0), 0);
+  const montantTVA = (montantHT * TVA_RATE) / 100;
+  const montantTTC = montantHT + montantTVA;
+  
+  return {
+    montantHT: parseFloat(montantHT.toFixed(2)),
+    montantTVA: parseFloat(montantTVA.toFixed(2)),
+    montantTTC: parseFloat(montantTTC.toFixed(2))
+  };
+};
+
+const calculateLigneAmount = (quantite, prixUnitaire) => {
+  return parseFloat((parseFloat(quantite || 0) * parseFloat(prixUnitaire || 0)).toFixed(2));
+};
+
+// GET /api/invoices - Liste des factures avec pagination et filtres
+const getInvoices = async (req, res) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 10));
+    const search = String(req.query.search || '').trim();
+    const statut = String(req.query.statut || '').trim();
+    const type = String(req.query.type || '').trim();
+    const clientId = Number(req.query.clientId) || null;
+    const dateDebut = req.query.dateDebut || null;
+    const dateFin = req.query.dateFin || null;
+    const sortBy = String(req.query.sortBy || 'date_facture');
+    const sortOrder = String(req.query.sortOrder || 'DESC').toUpperCase();
+    
+    const offset = (page - 1) * limit;
+    
+    // Construction des conditions WHERE
+    let whereConditions = [];
+    let queryParams = [];
+    
+    if (search) {
+      whereConditions.push(`(
+        f.numero_facture LIKE ? OR 
+        c.nom LIKE ? OR 
+        c.prenom LIKE ? OR 
+        c.entreprise LIKE ?
+      )`);
+      const searchParam = `%${search}%`;
+      queryParams.push(searchParam, searchParam, searchParam, searchParam);
+    }
+    
+    if (statut && ['brouillon', 'envoyee', 'payee', 'en_retard', 'annulee'].includes(statut)) {
+      whereConditions.push('f.statut = ?');
+      queryParams.push(statut);
+    }
+    
+    if (type && ['hebergement', 'restauration', 'evenement', 'autre'].includes(type)) {
+      whereConditions.push('f.type_facture = ?');
+      queryParams.push(type);
+    }
+    
+    if (clientId) {
+      whereConditions.push('f.client_id = ?');
+      queryParams.push(clientId);
+    }
+    
+    if (dateDebut) {
+      whereConditions.push('f.date_facture >= ?');
+      queryParams.push(dateDebut);
+    }
+    
+    if (dateFin) {
+      whereConditions.push('f.date_facture <= ?');
+      queryParams.push(dateFin);
+    }
+    
+    const whereClause = whereConditions.length > 0 
+      ? `WHERE ${whereConditions.join(' AND ')}` 
+      : '';
+    
+    // Requête pour compter le total
+    const [countResult] = await query(`
+      SELECT COUNT(*) as total 
+      FROM factures f
+      LEFT JOIN clients c ON f.client_id = c.id 
+      ${whereClause}
+    `, queryParams);
+    
+    const total = countResult.total;
+    
+    // Validation du tri
+    const allowedSortFields = ['date_facture', 'numero_facture', 'montant_ttc', 'statut', 'date_echeance'];
+    const safeSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'date_facture';
+    const safeSortOrder = ['ASC', 'DESC'].includes(sortOrder) ? sortOrder : 'DESC';
+    
+    // Requête principale avec informations client
+    const facturesQuery = `
+      SELECT 
+        f.*,
+        c.code_client,
+        c.nom as client_nom,
+        c.prenom as client_prenom,
+        c.entreprise,
+        c.email as client_email,
+        u.nom as user_nom,
+        u.prenom as user_prenom
+      FROM factures f
+      LEFT JOIN clients c ON f.client_id = c.id
+      LEFT JOIN users u ON f.user_id = u.id
+      ${whereClause}
+      ORDER BY f.${safeSortBy} ${safeSortOrder}
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+    
+    const factures = await query(facturesQuery, queryParams);
+    
+    res.json({
+      success: true,
+      data: {
+        factures,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page < Math.ceil(total / limit),
+          hasPrev: page > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur récupération factures:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors de la récupération des factures'
+    });
+  }
+};
+
+// GET /api/invoices/:id - Récupéreration d'une facture avec ses lignes
+const getInvoiceById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Récupéreration de facture avec infos client
+    const factures = await query(`
+      SELECT 
+        f.*,
+        c.code_client,
+        c.nom as client_nom,
+        c.prenom as client_prenom,
+        c.entreprise,
+        c.email as client_email,
+        c.telephone as client_telephone,
+        c.adresse as client_adresse,
+        c.ville as client_ville,
+        c.pays as client_pays,
+        u.nom as user_nom,
+        u.prenom as user_prenom
+      FROM factures f
+      LEFT JOIN clients c ON f.client_id = c.id
+      LEFT JOIN users u ON f.user_id = u.id
+      WHERE f.id = ?
+    `, [id]);
+    
+    if (factures.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Facture introuvable'
+      });
+    }
+    
+    // Récupéreration de lignes de la facture
+    const lignes = await query(`
+      SELECT * FROM lignes_factures 
+      WHERE facture_id = ? 
+      ORDER BY ordre_affichage ASC
+    `, [id]);
+    
+    const facture = {
+      ...factures[0],
+      lignes
+    };
+    
+    res.json({
+      success: true,
+      data: facture
+    });
+
+  } catch (error) {
+    console.error('Erreur récupération facture:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors de la récupération de la facture'
+    });
+  }
+};
+
+// POST /api/invoices - Créer une nouvelle facture
+const createInvoice = async (req, res) => {
+  try {
+    const {
+      client_id,
+      date_facture,
+      date_echeance,
+      type_facture,
+      note_interne,
+      message_client,
+      lignes,
+      statut = 'brouillon'
+    } = req.body;
+
+    // Validation des champs obligatoires
+    if (!client_id || !date_facture || !date_echeance || !type_facture || !lignes || lignes.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Données manquantes : client, dates, type et au moins une ligne requis'
+      });
+    }
+
+    // Vérifier que le client existe
+    const clients = await query('SELECT id FROM clients WHERE id = ?', [client_id]);
+    if (clients.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Client introuvable'
+      });
+    }
+
+    // Calculer les montants des lignes
+    const lignesAvecMontants = lignes.map((ligne, index) => ({
+      ...ligne,
+      montant_ligne: calculateLigneAmount(ligne.quantite, ligne.prix_unitaire),
+      ordre_affichage: index + 1
+    }));
+
+    // Calculer les totaux de la facture
+    const { montantHT, montantTVA, montantTTC } = calculateInvoiceAmounts(lignesAvecMontants);
+
+    // Générer le numéro de facture
+    const numeroFacture = await query('SELECT generer_numero_facture() as numero');
+    const numero = numeroFacture[0].numero;
+
+    // Créer la facture
+    const factureResult = await query(`
+      INSERT INTO factures (
+        numero_facture, client_id, user_id, date_facture, date_echeance,
+        montant_ht, taux_tva, montant_tva, montant_ttc,
+        type_facture, note_interne, message_client, statut
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      numero, client_id, req.user.id, date_facture, date_echeance,
+      montantHT, TVA_RATE, montantTVA, montantTTC,
+      type_facture, note_interne, message_client, statut
+    ]);
+
+    const factureId = factureResult.insertId;
+
+    // Insérer les lignes de facture
+    for (const ligne of lignesAvecMontants) {
+      await query(`
+        INSERT INTO lignes_factures (
+          facture_id, designation, description, quantite, 
+          prix_unitaire, montant_ligne, ordre_affichage
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [
+        factureId, ligne.designation, ligne.description || '',
+        ligne.quantite, ligne.prix_unitaire, ligne.montant_ligne,
+        ligne.ordre_affichage
+      ]);
+    }
+
+    // Récupérer la facture créée avec ses infos
+    const nouvelleFacture = await query(`
+      SELECT 
+        f.*,
+        c.code_client,
+        c.nom as client_nom,
+        c.prenom as client_prenom,
+        c.entreprise
+      FROM factures f
+      LEFT JOIN clients c ON f.client_id = c.id
+      WHERE f.id = ?
+    `, [factureId]);
+
+    // Log de l'action
+    await query(`
+      INSERT INTO historique_actions (
+        user_id, user_type, action, table_concernee, 
+        enregistrement_id, nouvelles_valeurs, ip_address
+      ) VALUES (?, 'user', 'CREATE', 'factures', ?, ?, ?)
+    `, [
+      req.user.id, 
+      factureId, 
+      JSON.stringify({ facture: nouvelleFacture[0], lignes: lignesAvecMontants }),
+      req.ip
+    ]);
+
+    res.status(201).json({
+      success: true,
+      message: 'Facture créée avec succès',
+      data: {
+        ...nouvelleFacture[0],
+        lignes: lignesAvecMontants
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur création facture:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors de la création de la facture'
+    });
+  }
+};
+
+// PUT /api/invoices/:id - Modifier une facture
+const updateInvoice = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      client_id,
+      date_facture,
+      date_echeance,
+      type_facture,
+      note_interne,
+      message_client,
+      lignes,
+      statut
+    } = req.body;
+
+    // Vérifier que la facture existe
+    const existingFactures = await query('SELECT * FROM factures WHERE id = ?', [id]);
+    if (existingFactures.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Facture introuvable'
+      });
+    }
+
+    const existingFacture = existingFactures[0];
+
+    // Vérifier les permissions de modification
+    if (existingFacture.statut === 'payee' && req.userRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Impossible de modifier une facture payée'
+      });
+    }
+
+    // Calculer les nouveaux montants si des lignes sont fournies
+    let montantHT = existingFacture.montant_ht;
+    let montantTVA = existingFacture.montant_tva;
+    let montantTTC = existingFacture.montant_ttc;
+
+    if (lignes && lignes.length > 0) {
+      const lignesAvecMontants = lignes.map((ligne, index) => ({
+        ...ligne,
+        montant_ligne: calculateLigneAmount(ligne.quantite, ligne.prix_unitaire),
+        ordre_affichage: index + 1
+      }));
+
+      const montants = calculateInvoiceAmounts(lignesAvecMontants);
+      montantHT = montants.montantHT;
+      montantTVA = montants.montantTVA;
+      montantTTC = montants.montantTTC;
+
+      // Supprimer les anciennes lignes
+      await query('DELETE FROM lignes_factures WHERE facture_id = ?', [id]);
+
+      // Insérer les nouvelles lignes
+      for (const ligne of lignesAvecMontants) {
+        await query(`
+          INSERT INTO lignes_factures (
+            facture_id, designation, description, quantite, 
+            prix_unitaire, montant_ligne, ordre_affichage
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [
+          id, ligne.designation, ligne.description || '',
+          ligne.quantite, ligne.prix_unitaire, ligne.montant_ligne,
+          ligne.ordre_affichage
+        ]);
+      }
+    }
+
+    // Mettre à jour la facture
+    await query(`
+      UPDATE factures SET
+        client_id = ?, date_facture = ?, date_echeance = ?,
+        montant_ht = ?, montant_tva = ?, montant_ttc = ?,
+        type_facture = ?, note_interne = ?, message_client = ?, 
+        statut = ?, date_modification = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [
+      client_id || existingFacture.client_id,
+      date_facture || existingFacture.date_facture,
+      date_echeance || existingFacture.date_echeance,
+      montantHT, montantTVA, montantTTC,
+      type_facture || existingFacture.type_facture,
+      note_interne, message_client,
+      statut || existingFacture.statut,
+      id
+    ]);
+
+    // Récupérer la facture modifiée
+    const updatedFacture = await query(`
+      SELECT 
+        f.*,
+        c.code_client,
+        c.nom as client_nom,
+        c.prenom as client_prenom,
+        c.entreprise
+      FROM factures f
+      LEFT JOIN clients c ON f.client_id = c.id
+      WHERE f.id = ?
+    `, [id]);
+
+    // Log de l'action
+    await query(`
+      INSERT INTO historique_actions (
+        user_id, user_type, action, table_concernee, 
+        enregistrement_id, anciennes_valeurs, nouvelles_valeurs, ip_address
+      ) VALUES (?, 'user', 'UPDATE', 'factures', ?, ?, ?, ?)
+    `, [
+      req.user.id, 
+      id,
+      JSON.stringify(existingFacture),
+      JSON.stringify(updatedFacture[0]),
+      req.ip
+    ]);
+
+    res.json({
+      success: true,
+      message: 'Facture modifiée avec succès',
+      data: updatedFacture[0]
+    });
+
+  } catch (error) {
+    console.error('Erreur modification facture:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors de la modification de la facture'
+    });
+  }
+};
+
+// DELETE /api/invoices/:id - Supprimer une facture
+const deleteInvoice = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Vérifier que la facture existe
+    const existingFactures = await query('SELECT * FROM factures WHERE id = ?', [id]);
+    if (existingFactures.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Facture introuvable'
+      });
+    }
+
+    const existingFacture = existingFactures[0];
+
+    // Vérifier les permissions
+    if (existingFacture.statut === 'payee' && req.userRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Impossible de supprimer une facture payée'
+      });
+    }
+
+    // Supprimer les lignes d'abord (CASCADE normalement, mais pour être sûr)
+    await query('DELETE FROM lignes_factures WHERE facture_id = ?', [id]);
+
+    // Supprimer la facture
+    await query('DELETE FROM factures WHERE id = ?', [id]);
+
+    // Log de l'action
+    await query(`
+      INSERT INTO historique_actions (
+        user_id, user_type, action, table_concernee, 
+        enregistrement_id, anciennes_valeurs, ip_address
+      ) VALUES (?, 'user', 'DELETE', 'factures', ?, ?, ?)
+    `, [
+      req.user.id, 
+      id,
+      JSON.stringify(existingFacture),
+      req.ip
+    ]);
+
+    res.json({
+      success: true,
+      message: 'Facture supprimée avec succès'
+    });
+
+  } catch (error) {
+    console.error('Erreur suppression facture:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors de la suppression de la facture'
+    });
+  }
+};
+
+// POST /api/invoices/:id/status - Changer le statut d'une facture
+const changeInvoiceStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { statut, mode_paiement, reference_paiement } = req.body;
+
+    if (!statut || !['brouillon', 'envoyee', 'payee', 'en_retard', 'annulee'].includes(statut)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Statut invalide'
+      });
+    }
+
+    const facturs = await query('SELECT * FROM factures WHERE id = ?', [id]);
+    if (facturs.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Facture introuvable'
+      });
+    }
+
+    let updateData = {
+      statut,
+      date_modification: 'CURRENT_TIMESTAMP'
+    };
+
+    // Si marquée comme payée, enregistrer les infos de paiement
+    if (statut === 'payee') {
+      updateData.date_paiement = 'NOW()';
+      updateData.mode_paiement = mode_paiement;
+      updateData.reference_paiement = reference_paiement;
+    }
+
+    const setClause = Object.keys(updateData).map(key => 
+      key === 'date_modification' || key === 'date_paiement' 
+        ? `${key} = ${updateData[key]}` 
+        : `${key} = ?`
+    ).join(', ');
+
+    const values = Object.entries(updateData)
+      .filter(([key]) => key !== 'date_modification' && key !== 'date_paiement')
+      .map(([, value]) => value);
+
+    await query(`UPDATE factures SET ${setClause} WHERE id = ?`, [...values, id]);
+
+    res.json({
+      success: true,
+      message: `Facture marquée comme ${statut}`,
+      data: { statut }
+    });
+
+  } catch (error) {
+    console.error('Erreur changement statut facture:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors du changement de statut'
+    });
+  }
+};
+
+// GET /api/invoices/stats - Statistiques des factures
+const getInvoicesStats = async (req, res) => {
+  try {
+    const stats = await query(`
+      SELECT 
+        COUNT(*) as total_factures,
+        COUNT(CASE WHEN statut = 'brouillon' THEN 1 END) as brouillons,
+        COUNT(CASE WHEN statut = 'envoyee' THEN 1 END) as envoyees,
+        COUNT(CASE WHEN statut = 'payee' THEN 1 END) as payees,
+        COUNT(CASE WHEN statut = 'en_retard' THEN 1 END) as en_retard,
+        COUNT(CASE WHEN statut = 'annulee' THEN 1 END) as annulees,
+        COALESCE(SUM(CASE WHEN statut = 'payee' THEN montant_ttc ELSE 0 END), 0) as ca_realise,
+        COALESCE(SUM(CASE WHEN statut = 'envoyee' THEN montant_ttc ELSE 0 END), 0) as ca_en_attente,
+        COALESCE(SUM(CASE WHEN statut = 'en_retard' THEN montant_ttc ELSE 0 END), 0) as ca_en_retard,
+        COALESCE(SUM(montant_ttc), 0) as ca_total,
+        COUNT(CASE WHEN DATE(date_creation) = CURDATE() THEN 1 END) as nouvelles_aujourd_hui,
+        COUNT(CASE WHEN YEARWEEK(date_creation) = YEARWEEK(CURDATE()) THEN 1 END) as nouvelles_semaine
+      FROM factures
+      WHERE YEAR(date_facture) = YEAR(CURDATE())
+    `);
+
+    res.json({
+      success: true,
+      data: stats[0]
+    });
+
+  } catch (error) {
+    console.error('Erreur statistiques factures:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors de la récupération des statistiques'
+    });
+  }
+};
+
+// GET /api/invoices/:id/pdf - Générer le PDF d'une facture
+const generateInvoicePDF = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Récupérer la facture complète directement avec une requête
+    const factures = await query(`
+      SELECT 
+        f.*,
+        c.code_client,
+        c.nom as client_nom,
+        c.prenom as client_prenom,
+        c.entreprise,
+        c.email as client_email,
+        c.telephone as client_telephone,
+        c.adresse as client_adresse,
+        c.ville as client_ville,
+        c.pays as client_pays,
+        u.nom as user_nom,
+        u.prenom as user_prenom
+      FROM factures f
+      LEFT JOIN clients c ON f.client_id = c.id
+      LEFT JOIN users u ON f.user_id = u.id
+      WHERE f.id = ?
+    `, [id]);
+
+    if (factures.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Facture introuvable'
+      });
+    }
+
+    // Récupérer les lignes de la facture
+    const lignes = await query(`
+      SELECT * FROM lignes_factures 
+      WHERE facture_id = ? 
+      ORDER BY ordre_affichage ASC
+    `, [id]);
+
+    const facture = {
+      ...factures[0],
+      lignes
+    };
+
+    // Générer le PDF
+    const pdfBuffer = await generatePDFContent(facture);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="facture-${facture.numero_facture}.pdf"`);
+    res.send(pdfBuffer);
+
+  } catch (error) {
+    console.error('Erreur génération PDF:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la génération du PDF'
+    });
+  }
+};
+
+// POST /api/invoices/:id/duplicate - Dupliquer une facture
+const duplicateInvoice = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Récupérer la facture originale avec ses lignes
+    const originalFactures = await query(`
+      SELECT f.*, c.id as client_id
+      FROM factures f
+      LEFT JOIN clients c ON f.client_id = c.id
+      WHERE f.id = ?
+    `, [id]);
+
+    if (originalFactures.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Facture originale introuvable'
+      });
+    }
+
+    const originalFacture = originalFactures[0];
+
+    // Récupérer les lignes
+    const originalLignes = await query(
+      'SELECT * FROM lignes_factures WHERE facture_id = ? ORDER BY ordre_affichage',
+      [id]
+    );
+
+    // Créer une nouvelle facture basée sur l'originale
+    const duplicateData = {
+      client_id: originalFacture.client_id,
+      date_facture: new Date().toISOString().split('T')[0], // Date du jour
+      date_echeance: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // +30 jours
+      type_facture: originalFacture.type_facture,
+      note_interne: `Copie de ${originalFacture.numero_facture}`,
+      message_client: originalFacture.message_client,
+      lignes: originalLignes.map(ligne => ({
+        designation: ligne.designation,
+        description: ligne.description,
+        quantite: ligne.quantite,
+        prix_unitaire: ligne.prix_unitaire
+      })),
+      statut: 'brouillon'
+    };
+
+    // Utiliser la fonction de création existante
+    req.body = duplicateData;
+    await createInvoice(req, res);
+
+  } catch (error) {
+    console.error('Erreur duplication facture:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors de la duplication de la facture'
+    });
+  }
+};
+
+// Fonction utilitaire pour générer le PDF
+async function generatePDFContent(facture) {
+  try {
+    // Vérifier si le module de génération PDF est disponible
+    let pdfGenerator;
+    try {
+      pdfGenerator = require('../utils/pdfGenerator');
+    } catch (error) {
+      console.log('Module PDF non installé, génération d\'un PDF basique');
+      return generateBasicPDF(facture);
+    }
+    
+    // Utiliser le générateur PDF complet
+    return await pdfGenerator.generateInvoicePDF(facture);
+    
+  } catch (error) {
+    console.error('Erreur lors de la génération PDF:', error);
+    // En cas d'erreur, générer un PDF basique
+    return generateBasicPDF(facture);
+  }
+}
+
+// Fonction de fallback pour générer un PDF basique
+function generateBasicPDF(facture) {
+  // PDF basique en texte pour les tests
+  const content = `
+FACTURE ${facture.numero_facture}
+Date: ${facture.date_facture}
+Client: ${facture.client_nom} ${facture.client_prenom}
+${facture.entreprise ? `Entreprise: ${facture.entreprise}` : ''}
+
+Lignes:
+${facture.lignes.map(ligne => 
+  `- ${ligne.designation}: ${ligne.quantite} x ${ligne.prix_unitaire} = ${ligne.montant_ligne} XAF`
+).join('\n')}
+
+Total HT: ${facture.montant_ht} XAF
+TVA (${facture.taux_tva}%): ${facture.montant_tva} XAF
+Total TTC: ${facture.montant_ttc} XAF
+  `;
+  
+  return Buffer.from(content, 'utf8');
+}
+
+module.exports = {
+  getInvoices,
+  getInvoiceById,
+  createInvoice,
+  updateInvoice,
+  deleteInvoice,
+  changeInvoiceStatus,
+  getInvoicesStats,
+  generateInvoicePDF,
+  duplicateInvoice,
+  
+  // Fonctions utilitaires exportées
+  calculateInvoiceAmounts,
+  calculateLigneAmount,
+  TVA_RATE
+};
