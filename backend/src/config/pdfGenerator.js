@@ -1,6 +1,4 @@
 const PDFDocument = require('pdfkit');
-const fs = require('fs');
-const path = require('path');
 
 // Configuration du template
 const TEMPLATE_CONFIG = {
@@ -33,17 +31,36 @@ class InvoicePDFGenerator {
   async generateInvoicePDF(facture) {
     return new Promise((resolve, reject) => {
       try {
+        console.log('🔧 Initialisation du document PDF pour:', facture.numero_facture);
+        
         this.doc = new PDFDocument({ 
           size: 'A4', 
           margin: TEMPLATE_CONFIG.spacing.margin,
-          bufferPages: true
+          bufferPages: true,
+          autoFirstPage: true
         });
 
         const buffers = [];
-        this.doc.on('data', buffers.push.bind(buffers));
+        
+        // Écouter les événements de données
+        this.doc.on('data', (chunk) => {
+          buffers.push(chunk);
+        });
+        
         this.doc.on('end', () => {
           const pdfBuffer = Buffer.concat(buffers);
-          resolve(pdfBuffer);
+          console.log('✅ Document PDF finalisé, taille:', pdfBuffer.length, 'bytes');
+          
+          if (pdfBuffer.length === 0) {
+            reject(new Error('Le buffer PDF est vide'));
+          } else {
+            resolve(pdfBuffer);
+          }
+        });
+
+        this.doc.on('error', (error) => {
+          console.error('❌ Erreur PDFDocument:', error);
+          reject(error);
         });
 
         // Générer le contenu
@@ -54,10 +71,11 @@ class InvoicePDFGenerator {
         this.createTotalsSection(facture);
         this.createFooter(facture);
 
-        // Finaliser le document
+        // IMPORTANT : Finaliser le document
         this.doc.end();
 
       } catch (error) {
+        console.error('❌ Erreur lors de la génération PDF:', error);
         reject(error);
       }
     });
@@ -66,7 +84,6 @@ class InvoicePDFGenerator {
   // En-tête avec logo et informations de l'hôtel
   createHeader(facture) {
     const { doc } = this;
-    const pageWidth = doc.page.width - 2 * TEMPLATE_CONFIG.spacing.margin;
     
     // Titre principal
     doc.fontSize(24)
@@ -78,7 +95,7 @@ class InvoicePDFGenerator {
     doc.fontSize(12)
        .fillColor(TEMPLATE_CONFIG.colors.lightText)
        .font(TEMPLATE_CONFIG.fonts.regular)
-       .text('Hôtel de luxe au cœur de Yaoundé', TEMPLATE_CONFIG.spacing.margin, 90);
+       .text('Hôtel', TEMPLATE_CONFIG.spacing.margin, 90);
     
     // Informations de contact à droite
     const contactX = doc.page.width - TEMPLATE_CONFIG.spacing.margin - 200;
@@ -129,7 +146,7 @@ class InvoicePDFGenerator {
        .lineWidth(1)
        .stroke();
     
-    // Contenu de l'encadré - partie gauche
+    // Contenu de l'encadré
     const leftX = TEMPLATE_CONFIG.spacing.margin + 20;
     const rightX = doc.page.width - TEMPLATE_CONFIG.spacing.margin - 180;
     
@@ -138,14 +155,14 @@ class InvoicePDFGenerator {
        .font(TEMPLATE_CONFIG.fonts.bold)
        .text('Numéro de facture:', leftX, infoBoxY + 15)
        .font(TEMPLATE_CONFIG.fonts.regular)
-       .text(facture.numero_facture, leftX, infoBoxY + 32);
+       .text(facture.numero_facture || 'N/A', leftX, infoBoxY + 32);
     
     doc.font(TEMPLATE_CONFIG.fonts.bold)
        .text('Type:', leftX, infoBoxY + 50)
        .font(TEMPLATE_CONFIG.fonts.regular)
        .text(this.getTypeLabel(facture.type_facture), leftX, infoBoxY + 65);
     
-    // Contenu de l'encadré - partie droite
+    // Partie droite
     doc.font(TEMPLATE_CONFIG.fonts.bold)
        .text('Date de facture:', rightX, infoBoxY + 15)
        .font(TEMPLATE_CONFIG.fonts.regular)
@@ -172,12 +189,14 @@ class InvoicePDFGenerator {
     this.currentY += 25;
     
     // Informations client
-    doc.fontSize(11)
-       .fillColor(TEMPLATE_CONFIG.colors.text)
-       .font(TEMPLATE_CONFIG.fonts.bold)
-       .text(`${facture.client_nom} ${facture.client_prenom}`, TEMPLATE_CONFIG.spacing.margin, this.currentY);
-    
-    this.currentY += 15;
+    const clientNom = `${facture.client_nom || ''} ${facture.client_prenom || ''}`.trim();
+    if (clientNom) {
+      doc.fontSize(11)
+         .fillColor(TEMPLATE_CONFIG.colors.text)
+         .font(TEMPLATE_CONFIG.fonts.bold)
+         .text(clientNom, TEMPLATE_CONFIG.spacing.margin, this.currentY);
+      this.currentY += 15;
+    }
     
     if (facture.entreprise) {
       doc.font(TEMPLATE_CONFIG.fonts.regular)
@@ -185,8 +204,10 @@ class InvoicePDFGenerator {
       this.currentY += 15;
     }
     
-    doc.text(facture.client_email, TEMPLATE_CONFIG.spacing.margin, this.currentY);
-    this.currentY += 15;
+    if (facture.client_email) {
+      doc.text(facture.client_email, TEMPLATE_CONFIG.spacing.margin, this.currentY);
+      this.currentY += 15;
+    }
     
     if (facture.client_telephone) {
       doc.text(facture.client_telephone, TEMPLATE_CONFIG.spacing.margin, this.currentY);
@@ -198,18 +219,26 @@ class InvoicePDFGenerator {
       this.currentY += 15;
     }
     
-    doc.text(`${facture.client_ville}, ${facture.client_pays}`, TEMPLATE_CONFIG.spacing.margin, this.currentY);
-    this.currentY += 30;
+    const ville = facture.client_ville || '';
+    const pays = facture.client_pays || '';
+    if (ville || pays) {
+      doc.text(`${ville}${ville && pays ? ', ' : ''}${pays}`, 
+               TEMPLATE_CONFIG.spacing.margin, this.currentY);
+      this.currentY += 15;
+    }
+    
+    this.currentY += 15;
 
     // Message client
     if (facture.message_client) {
       doc.fontSize(10)
          .fillColor(TEMPLATE_CONFIG.colors.lightText)
          .font(TEMPLATE_CONFIG.fonts.italic)
-         .text(`Note: ${facture.message_client}`, TEMPLATE_CONFIG.spacing.margin, this.currentY, {
-           width: doc.page.width - 2 * TEMPLATE_CONFIG.spacing.margin,
-           align: 'justify'
-         });
+         .text(`Note: ${facture.message_client}`, 
+               TEMPLATE_CONFIG.spacing.margin, this.currentY, {
+                 width: doc.page.width - 2 * TEMPLATE_CONFIG.spacing.margin,
+                 align: 'justify'
+               });
       this.currentY += 30;
     }
   }
@@ -263,7 +292,9 @@ class InvoicePDFGenerator {
        .fillColor(TEMPLATE_CONFIG.colors.text)
        .font(TEMPLATE_CONFIG.fonts.regular);
     
-    facture.lignes.forEach((ligne, index) => {
+    const lignes = facture.lignes || [];
+    
+    lignes.forEach((ligne, index) => {
       const rowHeight = Math.max(40, this.calculateRowHeight(ligne));
       const isEven = index % 2 === 0;
       
@@ -288,7 +319,7 @@ class InvoicePDFGenerator {
       
       // Désignation
       doc.font(TEMPLATE_CONFIG.fonts.bold)
-         .text(ligne.designation, cols.designation.x + cellPadding, textY, {
+         .text(ligne.designation || '', cols.designation.x + cellPadding, textY, {
            width: cols.designation.width - 2 * cellPadding,
            height: rowHeight - 16
          });
@@ -301,20 +332,22 @@ class InvoicePDFGenerator {
          });
       
       // Quantité
-      doc.text(ligne.quantite.toString(), cols.quantite.x + cellPadding, textY, {
+      doc.text(String(ligne.quantite || 0), cols.quantite.x + cellPadding, textY, {
         width: cols.quantite.width - 2 * cellPadding,
         align: 'center'
       });
       
       // Prix unitaire
-      doc.text(this.formatCurrency(ligne.prix_unitaire), cols.prix.x + cellPadding, textY, {
+      doc.text(this.formatCurrency(ligne.prix_unitaire || 0), 
+               cols.prix.x + cellPadding, textY, {
         width: cols.prix.width - 2 * cellPadding,
         align: 'right'
       });
       
       // Montant
       doc.font(TEMPLATE_CONFIG.fonts.bold)
-         .text(this.formatCurrency(ligne.montant_ligne), cols.montant.x + cellPadding, textY, {
+         .text(this.formatCurrency(ligne.montant_ligne || 0), 
+               cols.montant.x + cellPadding, textY, {
            width: cols.montant.width - 2 * cellPadding,
            align: 'right'
          });
@@ -358,12 +391,13 @@ class InvoicePDFGenerator {
     
     // Montant HT
     doc.text('Montant HT :', textX, lineY)
-       .text(this.formatCurrency(facture.montant_ht), amountX, lineY, { align: 'right', width: 0 });
+       .text(this.formatCurrency(facture.montant_ht || 0), amountX, lineY, { align: 'right', width: 0 });
     lineY += lineHeight;
     
     // TVA
-    doc.text(`TVA (${facture.taux_tva}%) :`, textX, lineY)
-       .text(this.formatCurrency(facture.montant_tva), amountX, lineY, { align: 'right', width: 0 });
+    const tva = facture.taux_tva || 19.25;
+    doc.text(`TVA (${tva}%) :`, textX, lineY)
+       .text(this.formatCurrency(facture.montant_tva || 0), amountX, lineY, { align: 'right', width: 0 });
     lineY += lineHeight;
     
     // Ligne de séparation
@@ -379,12 +413,12 @@ class InvoicePDFGenerator {
        .font(TEMPLATE_CONFIG.fonts.bold)
        .fillColor(TEMPLATE_CONFIG.colors.primary)
        .text('Total TTC :', textX, lineY)
-       .text(this.formatCurrency(facture.montant_ttc), amountX, lineY, { align: 'right', width: 0 });
+       .text(this.formatCurrency(facture.montant_ttc || 0), amountX, lineY, { align: 'right', width: 0 });
     
     this.currentY = totalsBoxY + totalsBoxHeight + 30;
   }
 
-  // Pied de page avec mentions infos de paiement
+  // Pied de page
   createFooter(facture) {
     const { doc } = this;
     const footerY = doc.page.height - 150;
@@ -400,16 +434,19 @@ class InvoicePDFGenerator {
       doc.fontSize(10)
          .fillColor(TEMPLATE_CONFIG.colors.text)
          .font(TEMPLATE_CONFIG.fonts.regular)
-         .text(`Payé le : ${this.formatDate(facture.date_paiement)}`, TEMPLATE_CONFIG.spacing.margin, paymentY);
+         .text(`Payé le : ${this.formatDate(facture.date_paiement)}`, 
+               TEMPLATE_CONFIG.spacing.margin, paymentY);
       
       if (facture.mode_paiement) {
         paymentY += 15;
-        doc.text(`Mode de paiement : ${this.formatPaymentMode(facture.mode_paiement)}`, TEMPLATE_CONFIG.spacing.margin, paymentY);
+        doc.text(`Mode de paiement : ${this.formatPaymentMode(facture.mode_paiement)}`, 
+                 TEMPLATE_CONFIG.spacing.margin, paymentY);
       }
       
       if (facture.reference_paiement) {
         paymentY += 15;
-        doc.text(`Référence : ${facture.reference_paiement}`, TEMPLATE_CONFIG.spacing.margin, paymentY);
+        doc.text(`Référence : ${facture.reference_paiement}`, 
+                 TEMPLATE_CONFIG.spacing.margin, paymentY);
       }
     }
     
@@ -426,11 +463,13 @@ class InvoicePDFGenerator {
     doc.fontSize(8)
        .fillColor(TEMPLATE_CONFIG.colors.lightText)
        .font(TEMPLATE_CONFIG.fonts.regular)
-       .text('Hilton Yaoundé - RCCM: XXX - NIU: XXX', TEMPLATE_CONFIG.spacing.margin, legalY, {
+       .text('Hilton Yaoundé - RCCM: XXX - NIU: XXX', 
+             TEMPLATE_CONFIG.spacing.margin, legalY, {
          width: doc.page.width - 2 * TEMPLATE_CONFIG.spacing.margin,
          align: 'center'
        })
-       .text('TVA incluse selon la législation camerounaise en vigueur', TEMPLATE_CONFIG.spacing.margin, legalY + 12, {
+       .text('TVA incluse selon la législation camerounaise en vigueur', 
+             TEMPLATE_CONFIG.spacing.margin, legalY + 12, {
          width: doc.page.width - 2 * TEMPLATE_CONFIG.spacing.margin,
          align: 'center'
        })
@@ -443,8 +482,7 @@ class InvoicePDFGenerator {
 
   // Fonctions utilitaires
   calculateRowHeight(ligne) {
-    // Calcul approximatif basé sur la longueur du texte
-    const designationLines = Math.ceil(ligne.designation.length / 40);
+    const designationLines = Math.ceil((ligne.designation || '').length / 40);
     const descriptionLines = ligne.description ? Math.ceil(ligne.description.length / 35) : 1;
     const maxLines = Math.max(designationLines, descriptionLines, 1);
     return Math.max(40, maxLines * 15 + 10);
@@ -460,6 +498,7 @@ class InvoicePDFGenerator {
   }
 
   formatDate(dateString) {
+    if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: '2-digit',
@@ -491,18 +530,32 @@ class InvoicePDFGenerator {
 
 // Fonction principale exportée
 async function generateInvoicePDF(facture) {
+  console.log('🚀 Démarrage génération PDF pour facture:', facture?.numero_facture);
+  
+  if (!facture) {
+    throw new Error('Données de facture manquantes');
+  }
+
+  if (!facture.lignes || facture.lignes.length === 0) {
+    console.warn('⚠️ Facture sans lignes détectée, ajout d\'une ligne par défaut');
+    facture.lignes = [{
+      designation: 'Service non spécifié',
+      description: '',
+      quantite: 1,
+      prix_unitaire: facture.montant_ht || 0,
+      montant_ligne: facture.montant_ht || 0
+    }];
+  }
+
   const generator = new InvoicePDFGenerator();
   return await generator.generateInvoicePDF(facture);
 }
 
-// Configuration modifiable du template
-const updateTemplateConfig = (newConfig) => {
-  Object.assign(TEMPLATE_CONFIG, newConfig);
-};
-
 module.exports = {
   generateInvoicePDF,
-  updateTemplateConfig,
+  updateTemplateConfig: (newConfig) => {
+    Object.assign(TEMPLATE_CONFIG, newConfig);
+  },
   TEMPLATE_CONFIG,
   InvoicePDFGenerator
 };

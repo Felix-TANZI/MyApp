@@ -604,7 +604,9 @@ const generateInvoicePDF = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Récupérer la facture complète directement avec une requête
+    console.log('📄 Demande de génération PDF pour facture ID:', id);
+    
+    // Récupérer la facture complète
     const factures = await query(`
       SELECT 
         f.*,
@@ -626,6 +628,7 @@ const generateInvoicePDF = async (req, res) => {
     `, [id]);
 
     if (factures.length === 0) {
+      console.log('❌ Facture non trouvée:', id);
       return res.status(404).json({
         success: false,
         message: 'Facture introuvable'
@@ -641,21 +644,49 @@ const generateInvoicePDF = async (req, res) => {
 
     const facture = {
       ...factures[0],
-      lignes
+      lignes: lignes || []
     };
+
+    console.log('📋 Facture récupérée:', facture.numero_facture, 'avec', lignes?.length || 0, 'lignes');
 
     // Générer le PDF
     const pdfBuffer = await generatePDFContent(facture);
 
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      throw new Error('Le buffer PDF généré est vide');
+    }
+
+    console.log('✅ PDF généré avec succès, taille:', pdfBuffer.length, 'bytes');
+
+    // Vérifier que c'est bien un PDF (commence par %PDF)
+    const pdfHeader = pdfBuffer.slice(0, 4).toString();
+    if (!pdfHeader.includes('%PDF')) {
+      console.error('❌ Le buffer généré n\'est pas un PDF valide');
+      console.error('En-tête reçu:', pdfHeader);
+      throw new Error('Format PDF invalide');
+    }
+
+    // Configurer les headers de réponse
     res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', pdfBuffer.length);
     res.setHeader('Content-Disposition', `attachment; filename="facture-${facture.numero_facture}.pdf"`);
-    res.send(pdfBuffer);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
+    // Envoyer le buffer PDF
+    res.end(pdfBuffer);
+    
+    console.log('📤 PDF envoyé au client');
 
   } catch (error) {
-    console.error('Erreur génération PDF:', error);
+    console.error('❌ Erreur génération PDF:', error);
+    console.error('Stack:', error.stack);
+    
     res.status(500).json({
       success: false,
-      message: 'Erreur lors de la génération du PDF'
+      message: 'Erreur lors de la génération du PDF',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Erreur interne'
     });
   }
 };
@@ -721,22 +752,59 @@ const duplicateInvoice = async (req, res) => {
 // Fonction utilitaire pour générer le PDF
 async function generatePDFContent(facture) {
   try {
-    // Vérifier si le module de génération PDF est disponible
-    let pdfGenerator;
-    try {
-      pdfGenerator = require('../utils/pdfGenerator');
-    } catch (error) {
-      console.log('Module PDF non installé, génération d\'un PDF basique');
-      return generateBasicPDF(facture);
-    }
+    console.log('🔧 Tentative d\'import du générateur PDF...');
+    
+    // chemin
+    const { generateInvoicePDF } = require('../config/pdfGenerator');
+    
+    console.log('✅ Générateur PDF importé avec succès');
     
     // Utiliser le générateur PDF complet
-    return await pdfGenerator.generateInvoicePDF(facture);
+    const pdfBuffer = await generateInvoicePDF(facture);
+    
+    console.log('✅ PDF généré, taille:', pdfBuffer?.length || 0, 'bytes');
+    return pdfBuffer;
     
   } catch (error) {
-    console.error('Erreur lors de la génération PDF:', error);
-    // En cas d'erreur, générer un PDF basique
-    return generateBasicPDF(facture);
+    console.error('❌ Erreur lors de la génération PDF:', error);
+    console.error('Stack trace:', error.stack);
+    
+    // En cas d'erreur, essayer de générer un PDF minimal mais valide
+    return generateMinimalValidPDF(facture);
+  }
+}
+
+// Fonction pour générer un PDF minimal mais VALIDE (pas du texte)
+function generateMinimalValidPDF(facture) {
+  console.log('⚠️ Génération d\'un PDF minimal de secours...');
+  
+  try {
+    const PDFDocument = require('pdfkit');
+    
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument();
+      const buffers = [];
+      
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => {
+        const pdfBuffer = Buffer.concat(buffers);
+        console.log('✅ PDF minimal généré, taille:', pdfBuffer.length);
+        resolve(pdfBuffer);
+      });
+      doc.on('error', reject);
+      
+      // Contenu minimal mais valide
+      doc.fontSize(20).text('FACTURE ' + (facture.numero_facture || 'N/A'), 100, 100);
+      doc.fontSize(12).text('Client: ' + (facture.client_nom || 'N/A') + ' ' + (facture.client_prenom || ''), 100, 150);
+      doc.text('Montant TTC: ' + (facture.montant_ttc || 0) + ' XAF', 100, 200);
+      doc.text('Date: ' + (facture.date_facture || new Date().toISOString().split('T')[0]), 100, 250);
+      
+      doc.end();
+    });
+    
+  } catch (error) {
+    console.error('❌ Impossible de générer même un PDF minimal:', error);
+    throw new Error('Génération PDF complètement échouée');
   }
 }
 
