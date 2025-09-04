@@ -7,7 +7,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const clientsRoutes = require('./routes/clients');
 const invoicesRoutes = require('./routes/invoices');
-
+const usersRoutes = require('./routes/users'); 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -68,6 +68,17 @@ app.get('/', (req, res) => {
       'GET /api/auth/profile',
       'GET /api/auth/verify',
       
+      // Users endpoints 
+      'GET /api/users',
+      'GET /api/users/stats',
+      'GET /api/users/:id',
+      'POST /api/users',
+      'PUT /api/users/:id',
+      'PUT /api/users/:id/role',
+      'PUT /api/users/:id/password',
+      'POST /api/users/:id/toggle-status',
+      'DELETE /api/users/:id',
+      
       // Clients endpoints
       'GET /api/clients',
       'GET /api/clients/stats',
@@ -104,6 +115,9 @@ app.get('/api/health', async (req, res) => {
 // Routes d'authentification
 app.use('/api/auth', authRoutes);
 
+// Routes de gestion des utilisateurs
+app.use('/api/users', usersRoutes);
+
 // Routes de gestion des clients
 app.use('/api/clients', clientsRoutes);
 
@@ -120,6 +134,8 @@ app.use('*', (req, res) => {
       'GET /api/health',
       'POST /api/auth/login/professional',
       'POST /api/auth/login/client',
+      'GET /api/users (Admin only)',
+      'POST /api/users (Admin only)',
       'GET /api/clients',
       'POST /api/clients',
       'GET /api/invoices',
@@ -174,6 +190,10 @@ async function startServer() {
       console.log('- POST /api/auth/login/client')
       console.log('- POST /api/auth/logout')
       console.log('- GET  /api/auth/profile')
+      console.log('- GET  /api/users (Admin)');
+      console.log('- POST /api/users (Admin)');
+      console.log('- PUT  /api/users/:id (Admin)');
+      console.log('- DELETE /api/users/:id (Admin)');
       console.log('- GET  /api/clients')
       console.log('- POST /api/clients')
       console.log('- PUT  /api/clients/:id')

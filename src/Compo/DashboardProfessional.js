@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ClientsModule from './ClientsModule';
 import InvoicesModule from './InvoicesModule';
+import UsersModule from './UsersModule';
 import './DashboardProfessional.css';
 
 const DashboardProfessional = () => {
@@ -16,37 +17,55 @@ const DashboardProfessional = () => {
       name: 'Vue d\'ensemble',
       icon: '📊',
       description: 'Tableau de bord et statistiques',
-      color: 'from-blue-500 to-blue-600'
+      color: 'from-blue-500 to-blue-600',
+      roles: ['admin', 'commercial', 'comptable']
     },
     {
       id: 'clients',
       name: 'Clients',
       icon: '👥',
       description: 'Gestion des clients',
-      color: 'from-green-500 to-green-600'
+      color: 'from-green-500 to-green-600',
+      roles: ['admin', 'commercial', 'comptable']
     },
     {
       id: 'invoices', 
       name: 'Factures',
       icon: '📄',
       description: 'Création et gestion des factures',
-      color: 'from-purple-500 to-purple-600'
+      color: 'from-purple-500 to-purple-600',
+      roles: ['admin', 'commercial', 'comptable']
     },
     {
       id: 'payments',
       name: 'Paiements',
       icon: '💳',
       description: 'Suivi des paiements',
-      color: 'from-orange-500 to-orange-600'
+      color: 'from-orange-500 to-orange-600',
+      roles: ['admin', 'commercial', 'comptable']
+    },
+    {
+      id: 'users', 
+      name: 'Utilisateurs',
+      icon: '⚙️',
+      description: 'Gestion des utilisateurs système',
+      color: 'from-red-500 to-red-600',
+      roles: ['admin'] // Uniquement pour les admins
     },
     ...(isAdmin() ? [{
-      id: 'admin',
-      name: 'Administration',
-      icon: '⚙️',
-      description: 'Gestion des utilisateurs',
-      color: 'from-red-500 to-red-600'
+      id: 'system',
+      name: 'Système',
+      icon: '🔧',
+      description: 'Configuration et maintenance',
+      color: 'from-gray-500 to-gray-600',
+      roles: ['admin']
     }] : [])
   ];
+
+  // Filtrer les modules selon le rôle de l'utilisateur
+  const availableModules = modules.filter(module => 
+    module.roles.includes(user?.role)
+  );
 
   const handleLogout = async () => {
     try {
@@ -66,8 +85,10 @@ const DashboardProfessional = () => {
         return <InvoicesModule user={user} />;
       case 'payments':
         return <PaymentsModule user={user} />;
-      case 'admin':
-        return <AdminModule user={user} />;
+      case 'users':
+        return <UsersModule user={user} />;
+      case 'system':
+        return <SystemModule user={user} />;
       default:
         return <OverviewModule user={user} onNavigate={setCurrentModule} />;
     }
@@ -109,7 +130,7 @@ const DashboardProfessional = () => {
         </div>
 
         <nav className="sidebar-nav">
-          {modules.map((module) => (
+          {availableModules.map((module) => (
             <button
               key={module.id}
               className={`nav-item ${currentModule === module.id ? 'active' : ''}`}
@@ -140,12 +161,12 @@ const DashboardProfessional = () => {
       <div className="main-content">
         <div className="content-header">
           <h1 className="page-title">
-            {modules.find(m => m.id === currentModule)?.name || 'Tableau de bord'}
+            {availableModules.find(m => m.id === currentModule)?.name || 'Tableau de bord'}
           </h1>
           <div className="breadcrumb">
             <span>Hilton Yaoundé</span>
             <span className="separator">•</span>
-            <span>{modules.find(m => m.id === currentModule)?.name}</span>
+            <span>{availableModules.find(m => m.id === currentModule)?.name}</span>
           </div>
         </div>
 
@@ -157,11 +178,12 @@ const DashboardProfessional = () => {
   );
 };
 
-// Module Vue d'ensemble avec actions rapides
+// Module Vue d'ensemble avec actions rapides avec accès conditionnel
 const OverviewModule = ({ user, onNavigate }) => {
   const [stats, setStats] = useState({
     totalClients: 0,
     totalFactures: 0,
+    totalUsers: 0,
     caRealise: 0,
     facturesEnRetard: 0
   });
@@ -175,7 +197,7 @@ const OverviewModule = ({ user, onNavigate }) => {
 
   const fetchStats = async () => {
     try {
-      // Récupéreration des stats des clients
+      // Récupération des stats des clients
       const clientsResponse = await fetch('http://localhost:5000/api/clients/stats', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
@@ -209,6 +231,24 @@ const OverviewModule = ({ user, onNavigate }) => {
         }));
       }
 
+      //  Récupération des stats des utilisateurs, uniquement l'administrateur
+      if (user?.role === 'admin') {
+        const usersResponse = await fetch('http://localhost:5000/api/users/stats', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (usersResponse.ok) {
+          const usersData = await usersResponse.json();
+          setStats(prev => ({
+            ...prev,
+            totalUsers: usersData.data.total_users
+          }));
+        }
+      }
+
     } catch (error) {
       console.error('Erreur récupération stats:', error);
     }
@@ -237,7 +277,14 @@ const OverviewModule = ({ user, onNavigate }) => {
         description: 'Paiement facture HILT-2024-089',
         time: 'Il y a 4 heures',
         icon: '💳'
-      }
+      },
+      ...(user?.role === 'admin' ? [{
+        id: 4,
+        action: 'Utilisateur créé',
+        description: 'Nouvel utilisateur commercial ajouté',
+        time: 'Il y a 6 heures',
+        icon: '⚙️'
+      }] : [])
     ]);
   };
 
@@ -256,30 +303,47 @@ const OverviewModule = ({ user, onNavigate }) => {
       name: 'Nouveau client',
       icon: '👥',
       action: () => onNavigate('clients'),
-      color: 'green'
+      color: 'green',
+      roles: ['admin', 'commercial', 'comptable']
     },
     {
       id: 'new-invoice',
       name: 'Créer une facture',
       icon: '📄',
       action: () => onNavigate('invoices'),
-      color: 'blue'
+      color: 'blue',
+      roles: ['admin', 'commercial', 'comptable']
     },
     {
       id: 'record-payment',
       name: 'Enregistrer un paiement',
       icon: '💳',
       action: () => onNavigate('payments'),
-      color: 'purple'
+      color: 'purple',
+      roles: ['admin', 'commercial', 'comptable']
+    },
+    {
+      id: 'new-user',
+      name: 'Nouvel utilisateur',
+      icon: '⚙️',
+      action: () => onNavigate('users'),
+      color: 'red',
+      roles: ['admin'] // Uniquement pour les admins
     },
     {
       id: 'view-reports',
       name: 'Voir les rapports',
       icon: '📊',
       action: () => console.log('Rapports'),
-      color: 'orange'
+      color: 'orange',
+      roles: ['admin', 'commercial', 'comptable']
     }
   ];
+
+  // Filtrer les actions selon le rôle
+  const availableActions = quickActions.filter(action => 
+    action.roles.includes(user?.role)
+  );
 
   return (
     <div className="overview-module">
@@ -308,19 +372,30 @@ const OverviewModule = ({ user, onNavigate }) => {
           </div>
         </div>
 
-        <div className="stat-card orange">
-          <div className="stat-icon">⚠️</div>
-          <div className="stat-content">
-            <h3 className="stat-value">{stats.facturesEnRetard}</h3>
-            <p className="stat-label">Factures en retard</p>
+        {/* ✅ Stat utilisateurs visible uniquement pour les admins */}
+        {user?.role === 'admin' ? (
+          <div className="stat-card red">
+            <div className="stat-icon">⚙️</div>
+            <div className="stat-content">
+              <h3 className="stat-value">{stats.totalUsers}</h3>
+              <p className="stat-label">Utilisateurs système</p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="stat-card orange">
+            <div className="stat-icon">⚠️</div>
+            <div className="stat-content">
+              <h3 className="stat-value">{stats.facturesEnRetard}</h3>
+              <p className="stat-label">Factures en retard</p>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="quick-actions">
         <h2>Actions rapides</h2>
         <div className="action-cards">
-          {quickActions.map((action) => (
+          {availableActions.map((action) => (
             <button 
               key={action.id}
               className={`action-card ${action.color}`}
@@ -351,7 +426,7 @@ const OverviewModule = ({ user, onNavigate }) => {
   );
 };
 
-// Modules temporaires (Paiements et Admin restent inchangés)
+// Modules temporaires
 const PaymentsModule = ({ user }) => (
   <div className="module-placeholder">
     <h2>Module Paiements</h2>
@@ -363,10 +438,10 @@ const PaymentsModule = ({ user }) => (
   </div>
 );
 
-const AdminModule = ({ user }) => (
+const SystemModule = ({ user }) => (
   <div className="module-placeholder">
-    <h2>Module Administration</h2>
-    <p>Interface d'administration en cours de développement...</p>
+    <h2>Module Système</h2>
+    <p>Configuration et maintenance du système en cours de développement...</p>
     <div className="coming-soon-badge">
       <span className="badge-icon">🚀</span>
       <span>Prochainement disponible</span>
