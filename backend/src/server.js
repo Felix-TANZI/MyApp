@@ -7,7 +7,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const clientsRoutes = require('./routes/clients');
 const invoicesRoutes = require('./routes/invoices');
-const usersRoutes = require('./routes/users'); 
+const usersRoutes = require('./routes/users');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -123,6 +123,12 @@ app.use('/api/clients', clientsRoutes);
 
 // Routes de gestion des factures
 app.use('/api/invoices', invoicesRoutes);
+
+// Routes client
+app.use('/api/client', require('./routes/client'));
+
+// Routes admin pour les demandes
+app.use('/api/requests', require('./routes/requests'));
 
 // Route 404
 app.use('*', (req, res) => {

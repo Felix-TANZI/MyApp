@@ -1,50 +1,66 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import ClientInvoicesModule from './Client/ClientInvoicesModule';
+import ClientProfileModule from './Client/ClientProfileModule';
+import ClientNotificationsModule from './Client/ClientNotificationsModule';
 import './DashboardClient.css';
 
 const DashboardClient = () => {
   const { user, logout } = useAuth();
-  const [factures, setFactures] = useState([]);
+  const [currentModule, setCurrentModule] = useState('dashboard');
   const [stats, setStats] = useState({
-    totalFactures: 0,
-    montantTotal: 0,
-    facturesPayees: 0,
-    facturesEnAttente: 0
+    total_factures: 0,
+    montant_total: 0,
+    factures_payees: 0,
+    factures_en_attente: 0,
+    factures_en_retard: 0,
+    montant_paye: 0,
+    montant_en_attente: 0
   });
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchClientData();
+    fetchDashboardData();
   }, []);
 
-  const fetchClientData = async () => {
-    // Par la suite nous allons continuer avec API mais pour le moment on se limite a une Simulation des données client
-    const mockFactures = [
-      {
-        id: 1,
-        numero: 'HILT-2024-001',
-        date: '2024-12-01',
-        montant: 178875,
-        statut: 'payee',
-        type: 'Hébergement'
-      },
-      {
-        id: 2,
-        numero: 'HILT-2024-015',
-        date: '2024-12-15',
-        montant: 89437,
-        statut: 'envoyee',
-        type: 'Restauration'
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      // Récupérer les statistiques
+      const statsResponse = await fetch('http://localhost:5000/api/client/stats', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (statsResponse.ok) {
+        const statsData = await statsResponse.json();
+        setStats(statsData.data);
       }
-    ];
-    
-    setFactures(mockFactures);
-    
-    setStats({
-      totalFactures: mockFactures.length,
-      montantTotal: mockFactures.reduce((sum, f) => sum + f.montant, 0),
-      facturesPayees: mockFactures.filter(f => f.statut === 'payee').length,
-      facturesEnAttente: mockFactures.filter(f => f.statut === 'envoyee').length
-    });
+
+      // Récupérer les notifications récentes
+      const notifResponse = await fetch('http://localhost:5000/api/client/notifications?limit=5', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (notifResponse.ok) {
+        const notifData = await notifResponse.json();
+        setNotifications(notifData.data.notifications);
+        setUnreadCount(notifData.data.unread_count);
+      }
+
+    } catch (error) {
+      console.error('Erreur récupération données dashboard:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -64,16 +80,214 @@ const DashboardClient = () => {
     }).format(amount);
   };
 
-  const getStatutBadge = (statut) => {
-    const badges = {
-      'payee': { class: 'success', text: 'Payée' },
-      'envoyee': { class: 'warning', text: 'En attente' },
-      'en_retard': { class: 'danger', text: 'En retard' },
-      'brouillon': { class: 'draft', text: 'Brouillon' }
-    };
-    
-    return badges[statut] || { class: 'default', text: statut };
+  const renderCurrentModule = () => {
+    switch(currentModule) {
+      case 'invoices':
+        return <ClientInvoicesModule onBack={() => setCurrentModule('dashboard')} />;
+      case 'profile':
+        return <ClientProfileModule onBack={() => setCurrentModule('dashboard')} />;
+      case 'notifications':
+        return <ClientNotificationsModule onBack={() => setCurrentModule('dashboard')} />;
+      default:
+        return renderDashboard();
+    }
   };
+
+  const renderDashboard = () => (
+    <>
+      {/* Section de bienvenue */}
+      <div className="welcome-section">
+        <h1>Bonjour {user?.prenom} !</h1>
+        <p>Consultez et gérez vos factures Hilton Yaoundé</p>
+      </div>
+
+      {/* Statistiques */}
+      <div className="client-stats">
+        <div className="stat-card">
+          <div className="stat-icon blue">📄</div>
+          <div className="stat-content">
+            <h3>{stats.total_factures}</h3>
+            <p>Factures totales</p>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon green">💰</div>
+          <div className="stat-content">
+            <h3>{formatCurrency(stats.montant_total)}</h3>
+            <p>Montant total</p>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon success">✅</div>
+          <div className="stat-content">
+            <h3>{stats.factures_payees}</h3>
+            <p>Factures payées</p>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon warning">⏳</div>
+          <div className="stat-content">
+            <h3>{stats.factures_en_attente}</h3>
+            <p>En attente</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Actions rapides */}
+      <div className="quick-actions-section">
+        <h2>Actions rapides</h2>
+        <div className="quick-actions-grid">
+          <button 
+            className="quick-action-card"
+            onClick={() => setCurrentModule('invoices')}
+          >
+            <div className="action-icon">📋</div>
+            <div className="action-content">
+              <h3>Mes factures</h3>
+              <p>Consulter toutes mes factures</p>
+            </div>
+            <div className="action-arrow">→</div>
+          </button>
+
+          <button 
+            className="quick-action-card"
+            onClick={() => setCurrentModule('profile')}
+          >
+            <div className="action-icon">👤</div>
+            <div className="action-content">
+              <h3>Mon profil</h3>
+              <p>Gérer mes informations</p>
+            </div>
+            <div className="action-arrow">→</div>
+          </button>
+
+          <button 
+            className="quick-action-card"
+            onClick={() => setCurrentModule('notifications')}
+          >
+            <div className="action-icon">🔔</div>
+            <div className="action-content">
+              <h3>Notifications</h3>
+              <p>{unreadCount > 0 ? `${unreadCount} non lues` : 'Toutes lues'}</p>
+            </div>
+            <div className="action-arrow">→</div>
+            {unreadCount > 0 && <div className="notification-badge">{unreadCount}</div>}
+          </button>
+
+          <a 
+            href="mailto:contact@hilton-yaounde.com"
+            className="quick-action-card contact-card"
+          >
+            <div className="action-icon">📞</div>
+            <div className="action-content">
+              <h3>Support</h3>
+              <p>Contactez notre équipe</p>
+            </div>
+            <div className="action-arrow">↗</div>
+          </a>
+        </div>
+      </div>
+
+      {/* Notifications récentes */}
+      {notifications.length > 0 && (
+        <div className="recent-notifications-section">
+          <div className="section-header">
+            <h2>Notifications récentes</h2>
+            <button 
+              className="btn-secondary"
+              onClick={() => setCurrentModule('notifications')}
+            >
+              Voir toutes
+            </button>
+          </div>
+          <div className="notifications-preview">
+            {notifications.slice(0, 3).map((notification) => (
+              <div 
+                key={notification.id} 
+                className={`notification-preview ${!notification.lu ? 'unread' : ''}`}
+              >
+                <div className="notification-icon">
+                  {getNotificationIcon(notification.type)}
+                </div>
+                <div className="notification-content">
+                  <h4>{notification.titre}</h4>
+                  <p>{notification.message}</p>
+                  <span className="notification-time">
+                    {formatRelativeTime(notification.date_creation)}
+                  </span>
+                </div>
+                {!notification.lu && <div className="unread-indicator"></div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Informations de contact */}
+      <div className="contact-section">
+        <h2>Besoin d'aide ?</h2>
+        <div className="contact-cards">
+          <div className="contact-card">
+            <span className="contact-icon">📞</span>
+            <div>
+              <h4>Téléphone</h4>
+              <p>+237 222 XXX XXX</p>
+            </div>
+          </div>
+          <div className="contact-card">
+            <span className="contact-icon">✉️</span>
+            <div>
+              <h4>Email</h4>
+              <p>contact@hilton-yaounde.com</p>
+            </div>
+          </div>
+          <div className="contact-card">
+            <span className="contact-icon">📍</span>
+            <div>
+              <h4>Adresse</h4>
+              <p>Boulevard du 20 Mai, Yaoundé</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  const getNotificationIcon = (type) => {
+    const icons = {
+      'modification_approuvee': '✅',
+      'modification_rejetee': '❌',
+      'mot_de_passe_approuve': '🔑',
+      'mot_de_passe_rejete': '🚫',
+      'info': 'ℹ️'
+    };
+    return icons[type] || 'ℹ️';
+  };
+
+  const formatRelativeTime = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffHours = Math.floor((now - date) / (1000 * 60 * 60));
+    
+    if (diffHours < 1) return 'À l\'instant';
+    if (diffHours < 24) return `Il y a ${diffHours}h`;
+    if (diffHours < 48) return 'Hier';
+    return date.toLocaleDateString('fr-FR');
+  };
+
+  if (loading) {
+    return (
+      <div className="dashboard-client">
+        <div className="loading-dashboard">
+          <div className="loading-spinner"></div>
+          <p>Chargement de votre espace client...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-client">
@@ -103,6 +317,16 @@ const DashboardClient = () => {
               </div>
             </div>
             
+            {/* Navigation si on est dans un module */}
+            {currentModule !== 'dashboard' && (
+              <button 
+                className="btn-back"
+                onClick={() => setCurrentModule('dashboard')}
+              >
+                ← Retour
+              </button>
+            )}
+            
             <button className="logout-btn" onClick={handleLogout}>
               <span>🚪</span>
               Déconnexion
@@ -114,119 +338,7 @@ const DashboardClient = () => {
       {/* Main Content */}
       <main className="client-main">
         <div className="client-container">
-          <div className="welcome-section">
-            <h1>Bonjour {user?.prenom} !</h1>
-            <p>Consultez et gérez vos factures Hilton Yaoundé</p>
-          </div>
-
-          {/* Statistiques */}
-          <div className="client-stats">
-            <div className="stat-card">
-              <div className="stat-icon blue">📄</div>
-              <div className="stat-content">
-                <h3>{stats.totalFactures}</h3>
-                <p>Factures totales</p>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon green">💰</div>
-              <div className="stat-content">
-                <h3>{formatCurrency(stats.montantTotal)}</h3>
-                <p>Montant total</p>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon success">✅</div>
-              <div className="stat-content">
-                <h3>{stats.facturesPayees}</h3>
-                <p>Factures payées</p>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon warning">⏳</div>
-              <div className="stat-content">
-                <h3>{stats.facturesEnAttente}</h3>
-                <p>En attente</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Liste des factures */}
-          <div className="factures-section">
-            <div className="section-header">
-              <h2>Mes factures</h2>
-              <div className="section-actions">
-                <button className="btn-secondary">
-                  <span>📊</span>
-                  Voir tout
-                </button>
-              </div>
-            </div>
-
-            <div className="factures-list">
-              {factures.length > 0 ? (
-                factures.map((facture) => (
-                  <div key={facture.id} className="facture-card">
-                    <div className="facture-info">
-                      <div className="facture-header">
-                        <h3 className="facture-numero">{facture.numero}</h3>
-                        <span className={`statut-badge ${getStatutBadge(facture.statut).class}`}>
-                          {getStatutBadge(facture.statut).text}
-                        </span>
-                      </div>
-                      <div className="facture-details">
-                        <span className="facture-type">{facture.type}</span>
-                        <span className="facture-date">{new Date(facture.date).toLocaleDateString('fr-FR')}</span>
-                      </div>
-                    </div>
-                    <div className="facture-amount">
-                      <span className="amount">{formatCurrency(facture.montant)}</span>
-                    </div>
-                    <div className="facture-actions">
-                      <button className="btn-view">
-                        <span>👁️</span>
-                        Voir
-                      </button>
-                      <button className="btn-download">
-                        <span>📄</span>
-                        PDF
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="empty-state">
-                  <div className="empty-icon">📄</div>
-                  <h3>Aucune facture</h3>
-                  <p>Vous n'avez pas encore de factures.</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Informations de contact */}
-          <div className="contact-section">
-            <h2>Besoin d'aide ?</h2>
-            <div className="contact-cards">
-              <div className="contact-card">
-                <span className="contact-icon">📞</span>
-                <div>
-                  <h4>Téléphone</h4>
-                  <p>+237 222 XXX XXX</p>
-                </div>
-              </div>
-              <div className="contact-card">
-                <span className="contact-icon">✉️</span>
-                <div>
-                  <h4>Email</h4>
-                  <p>contact@hilton-yaounde.com</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          {renderCurrentModule()}
         </div>
       </main>
     </div>
