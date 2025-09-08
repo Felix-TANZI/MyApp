@@ -98,7 +98,7 @@ const DashboardClient = () => {
       {/* Section de bienvenue */}
       <div className="welcome-section">
         <h1>Bonjour {user?.prenom} !</h1>
-        <p>Consultez et gérez vos factures Hilton Yaoundé</p>
+        <p>Consultez et gérez vos factures via Amani</p>
       </div>
 
       {/* Statistiques */}
@@ -178,7 +178,7 @@ const DashboardClient = () => {
           </button>
 
           <a 
-            href="mailto:contact@hilton-yaounde.com"
+            href="mailto:tanzifelix@gmail.com"
             className="quick-action-card contact-card"
           >
             <div className="action-icon">📞</div>
@@ -231,24 +231,24 @@ const DashboardClient = () => {
         <h2>Besoin d'aide ?</h2>
         <div className="contact-cards">
           <div className="contact-card">
-            <span className="contact-icon">📞</span>
-            <div>
-              <h4>Téléphone</h4>
-              <p>+237 222 XXX XXX</p>
-            </div>
-          </div>
-          <div className="contact-card">
-            <span className="contact-icon">✉️</span>
+            <span className="contact-icon">📧</span>
             <div>
               <h4>Email</h4>
-              <p>contact@hilton-yaounde.com</p>
+              <p>support@amani-app.com</p>
             </div>
           </div>
           <div className="contact-card">
-            <span className="contact-icon">📍</span>
+            <span className="contact-icon">📖</span>
             <div>
-              <h4>Adresse</h4>
-              <p>Boulevard du 20 Mai, Yaoundé</p>
+              <h4>Documentation</h4>
+              <p>Guide d'utilisation en ligne</p>
+            </div>
+          </div>
+          <div className="contact-card">
+            <span className="contact-icon">🇨🇲</span>
+            <div>
+              <h4>Développé au Cameroun</h4>
+              <p>Solution hôtelière locale</p>
             </div>
           </div>
         </div>
@@ -297,7 +297,7 @@ const DashboardClient = () => {
           <div className="header-left">
             <div className="logo-section">
               <span className="logo-icon">🏨</span>
-              <span className="logo-text">Hilton Yaoundé</span>
+              <span className="logo-text">Amani</span>
             </div>
             <div className="page-title">Espace Client</div>
           </div>
@@ -346,5 +346,3 @@ const DashboardClient = () => {
 };
 
 export default DashboardClient;
-
-// test numero 1

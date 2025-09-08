@@ -53,7 +53,7 @@ const LogClient = ({ onNavigate }) => {
   };
 
   const handleGoogleLogin = () => {
-    // TODO: Implementer la logique de connexion Google
+    // Implementer la logique de connexion Google plus tard en evoluant avec l'application
     console.log('Google Login initiated');
   };
 
@@ -102,7 +102,7 @@ const LogClient = ({ onNavigate }) => {
             <>
               <div className="form-header-adapted-client">
                 <div className="hilton-brand-client">
-                  <h2 className="form-title-adapted-client">Connexion Client</h2>
+                  <h2 className="form-title-adapted-client">Amani Client</h2>
                   <div className="brand-line-client"></div>
                 </div>
                 <p className="form-subtitle-adapted-client">Accédez à votre espace personnel</p>
@@ -237,7 +237,7 @@ const LogClient = ({ onNavigate }) => {
                       id="resetEmail"
                       name="resetEmail"
                       className="form-input-adapted-client"
-                      placeholder="tanzifelix@gmail.com"
+                      placeholder="exemple@gmail.com"
                       value={resetEmail}
                       onChange={(e) => setResetEmail(e.target.value)}
                       required

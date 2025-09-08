@@ -78,7 +78,7 @@ const LogPro = ({ onNavigate }) => {
         <div className="login-right-adapted">
           <div className="form-header-adapted">
             <div className="hilton-brand">
-              <h2 className="form-title-adapted">Espace Professionnel</h2>
+              <h2 className="form-title-adapted">Amani Pro</h2>
               <div className="brand-line"></div>
             </div>
             <p className="form-subtitle-adapted">Administration • Commercial • Comptabilité</p>
@@ -176,9 +176,9 @@ const LogPro = ({ onNavigate }) => {
               <div className="admin-message-adapted">
                 <div className="message-icon">ℹ️</div>
                 <div className="message-content">
-                  <strong>Support Technique</strong>
+                  <strong>Support Technique Amani</strong>
                   <p>Contactez l'administrateur système :</p>
-                  <strong>admin@hilton-yaounde.com</strong>
+                  <strong>tanzifelix@gmail.com</strong>
                 </div>
               </div>
             )}

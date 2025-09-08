@@ -8,11 +8,11 @@ const HomePage = ({ onNavigate }) => {
       <header className="home-header">
         <div className="header-container">
           <div className="logo-section">
-            <div className="hilton-logo">
+            <div className="amani-logo">
               <div className="logo-icon">🏨</div>
               <div className="logo-text">
-                <span className="logo-primary">HILTON</span>
-                <span className="logo-secondary">Yaoundé</span>
+                <span className="logo-primary">AMANI</span>
+                <span className="logo-secondary">Gestion Hôtelière</span>
               </div>
             </div>
           </div>
@@ -28,31 +28,31 @@ const HomePage = ({ onNavigate }) => {
           <div className="hero-content">
             <div className="hero-badge">
               <span className="badge-icon">✨</span>
-              Excellence Hôtelière depuis 1919
+              Solution de Gestion Hôtelière
             </div>
             <h1 className="hero-title">
-              Bienvenue au 
-              <span className="title-highlight"> Hilton Yaoundé</span>
+              Bienvenue sur 
+              <span className="title-highlight"> Amani</span>
             </h1>
             <p className="hero-subtitle">
-              Votre partenaire de confiance au cœur de la capitale camerounaise. 
+              Votre solution complète de gestion de factures pour établissements hôteliers. 
               Accédez à votre espace sécurisé pour la gestion de vos factures et services.
             </p>
             
             <div className="hero-stats">
               <div className="stat-item">
-                <div className="stat-number">100+</div>
-                <div className="stat-label">Chambres Premium</div>
+                <div className="stat-number">100%</div>
+                <div className="stat-label">Sécurisé</div>
               </div>
               <div className="stat-divider"></div>
               <div className="stat-item">
                 <div className="stat-number">24/7</div>
-                <div className="stat-label">Service Client</div>
+                <div className="stat-label">Disponibilité</div>
               </div>
               <div className="stat-divider"></div>
               <div className="stat-item">
-                <div className="stat-number">15+</div>
-                <div className="stat-label">Années d'Excellence</div>
+                <div className="stat-number">Multi</div>
+                <div className="stat-label">Établissements</div>
               </div>
             </div>
           </div>
@@ -62,7 +62,7 @@ const HomePage = ({ onNavigate }) => {
               <div className="card-glow"></div>
               <img 
                 src="/image/auth.png"
-                alt="Hilton Yaoundé - Système sécurisé" 
+                alt="Amani - Système sécurisé de gestion hôtelière" 
                 className="hero-image"
               />
             </div>
@@ -98,7 +98,7 @@ const HomePage = ({ onNavigate }) => {
               <div className="card-content">
                 <h3 className="card-title">Espace Professionnel</h3>
                 <p className="card-description">
-                  Accès réservé au personnel Hilton : administrateurs, 
+                  Accès réservé au personnel hôtelier : administrateurs, 
                   équipe commerciale et service comptabilité.
                 </p>
               </div>
@@ -148,36 +148,36 @@ const HomePage = ({ onNavigate }) => {
             <div className="footer-brand">
               <div className="footer-logo">
                 <span className="footer-logo-icon">🏨</span>
-                <span className="footer-logo-text">Hilton Yaoundé</span>
+                <span className="footer-logo-text">Amani</span>
               </div>
               <p className="footer-description">
-                Excellence hôtelière et innovation technologique au service de votre confort.
+                Solution de gestion hôtelière moderne et sécurisée, développée au Cameroun pour l'excellence dans l'hospitalité.
               </p>
             </div>
             
             <div className="footer-info">
               <div className="info-section">
-                <h4 className="info-title">Contact</h4>
+                <h4 className="info-title">Application</h4>
                 <div className="info-items">
-                  <div className="info-item">📍 Boulevard du 20 Mai, Yaoundé</div>
-                  <div className="info-item">📞 +237 222 XXX XXX</div>
-                  <div className="info-item">✉️ contact@hilton-yaounde.com</div>
+                  <div className="info-item">🌐 Application Web</div>
+                  <div className="info-item">🔒 Sécurisée SSL</div>
+                  <div className="info-item">📱 Interface Responsive</div>
                 </div>
               </div>
               
               <div className="info-section">
-                <h4 className="info-title">Equipe Technique</h4>
+                <h4 className="info-title">Équipe Technique</h4>
                 <div className="info-items">
-                  <div className="info-item"> tanzifelix@gmail.com</div>
-                  <div className="info-item"> taoussetmounira@gmail.com</div>
+                  <div className="info-item">📧 tanzifelix@gmail.com</div>
+                  <div className="info-item">📧 taoussetmounira@gmail.com</div>
                 </div>
               </div>
 
               <div className="info-section">
                 <h4 className="info-title">Superviseurs</h4>
                 <div className="info-items">
-                  <div className="info-item"> Ramses FOUDA</div>
-                  <div className="info-item"> Francis OBONO</div>
+                  <div className="info-item">Ing Francis OBONO</div>
+                  <div className="info-item">Ing Ramses FOUDA</div>
                 </div>
               </div>
             </div>
@@ -185,7 +185,7 @@ const HomePage = ({ onNavigate }) => {
           
           <div className="footer-bottom">
             <div className="footer-copyright">
-              © 2024 Hilton Yaoundé. Tous droits réservés.
+              © 2025 Amani - Système de Gestion Hôtelière. Développé au Cameroun.
             </div>
           </div>
         </div>

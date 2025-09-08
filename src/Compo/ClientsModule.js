@@ -285,7 +285,7 @@ const ClientsModule = ({ user }) => {
         <div className="header-content">
           <div className="header-title">
             <h1>Gestion des Clients</h1>
-            <p>Gérer les clients de l'hôtel Hilton Yaoundé</p>
+            <p>Gérer les clients de votre établissement avec Amani</p>
           </div>
           <button className="btn-primary" onClick={openCreateModal}>
             <span className="btn-icon">➕</span>

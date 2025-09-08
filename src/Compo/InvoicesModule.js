@@ -1374,10 +1374,10 @@ const InvoicePreviewModal = ({ invoice, onClose, onDownloadPDF }) => {
             {/* En-tête de facture */}
             <div className="preview-header">
               <div className="company-info">
-                <h2>HILTON YAOUNDÉ</h2>
-                <p>Boulevard du 20 Mai</p>
-                <p>Yaoundé, Cameroun</p>
-                <p>Tél: +237 222 XXX XXX</p>
+                <h2>AMANI</h2>
+                <p>Solution de Gestion Hôtelière</p>
+                <p>Développé au Cameroun</p>
+                <p>Email: tanzifelix@gmail.com</p>
               </div>
               <div className="invoice-info">
                 <h3 className="invoice-title">FACTURE</h3>

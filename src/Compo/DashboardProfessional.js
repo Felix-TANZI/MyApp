@@ -103,8 +103,8 @@ const DashboardProfessional = () => {
             <div className="logo-icon">🏨</div>
             {sidebarExpanded && (
               <div className="logo-text">
-                <span className="logo-primary">Hilton</span>
-                <span className="logo-secondary">Yaoundé</span>
+                <span className="logo-primary">Amani</span>
+                <span className="logo-secondary">Gestion</span>
               </div>
             )}
           </div>
@@ -164,7 +164,7 @@ const DashboardProfessional = () => {
             {availableModules.find(m => m.id === currentModule)?.name || 'Tableau de bord'}
           </h1>
           <div className="breadcrumb">
-            <span>Hilton Yaoundé</span>
+            <span>Amani</span>
             <span className="separator">•</span>
             <span>{availableModules.find(m => m.id === currentModule)?.name}</span>
           </div>

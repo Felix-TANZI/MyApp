@@ -394,51 +394,51 @@ const UsersModule = ({ user }) => {
   };
 
   return (
-    <div className="users-module">
-      {/* En-tête avec statistiques */}
-      <div className="module-header">
-        <div className="header-content">
-          <div className="header-title">
-            <h1>Gestion des Utilisateurs</h1>
-            <p>Administration du personnel système</p>
-          </div>
-          <button className="btn-primary" onClick={openCreateModal}>
-            <span className="btn-icon">➕</span>
-            Nouvel Utilisateur
-          </button>
+  <div className="users-module">
+    {/* En-tête avec statistiques */}
+    <div className="module-header">
+      <div className="header-content">
+        <div className="header-title">
+          <h1>Gestion des Utilisateurs</h1>
+          <p>Administration du personnel - Système Amani</p>
         </div>
-        
-        <div className="stats-cards">
-          <div className="stat-card red">
-            <div className="stat-icon">👥</div>
-            <div className="stat-content">
-              <h3>{stats.total_users || 0}</h3>
-              <p>Total Utilisateurs</p>
-            </div>
+        <button className="btn-primary" onClick={openCreateModal}>
+          <span className="btn-icon">➕</span>
+          Nouvel Utilisateur
+        </button>
+      </div>
+      
+      <div className="stats-cards">
+        <div className="stat-card red">
+          <div className="stat-icon">👥</div>
+          <div className="stat-content">
+            <h3>{stats.total_users || 0}</h3>
+            <p>Total Utilisateurs</p>
           </div>
-          <div className="stat-card blue">
-            <div className="stat-icon">👑</div>
-            <div className="stat-content">
-              <h3>{stats.admins || 0}</h3>
-              <p>Administrateurs</p>
-            </div>
+        </div>
+        <div className="stat-card blue">
+          <div className="stat-icon">👑</div>
+          <div className="stat-content">
+            <h3>{stats.admins || 0}</h3>
+            <p>Administrateurs</p>
           </div>
-          <div className="stat-card green">
-            <div className="stat-icon">✅</div>
-            <div className="stat-content">
-              <h3>{stats.actifs || 0}</h3>
-              <p>Utilisateurs Actifs</p>
-            </div>
+        </div>
+        <div className="stat-card green">
+          <div className="stat-icon">✅</div>
+          <div className="stat-content">
+            <h3>{stats.actifs || 0}</h3>
+            <p>Utilisateurs Actifs</p>
           </div>
-          <div className="stat-card orange">
-            <div className="stat-icon">📈</div>
-            <div className="stat-content">
-              <h3>{stats.nouveaux_mois || 0}</h3>
-              <p>Nouveaux ce Mois</p>
-            </div>
+        </div>
+        <div className="stat-card orange">
+          <div className="stat-icon">📈</div>
+          <div className="stat-content">
+            <h3>{stats.nouveaux_mois || 0}</h3>
+            <p>Nouveaux ce Mois</p>
           </div>
         </div>
       </div>
+    </div>
 
       {/* Filtres et recherche */}
       <div className="filters-section">
