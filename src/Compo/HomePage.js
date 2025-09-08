@@ -195,6 +195,3 @@ const HomePage = ({ onNavigate }) => {
 };
 
 export default HomePage;
-
-
-// TANZI
