@@ -1,9 +1,9 @@
 Amani est une solution complète de gestion hôtelière développée au Cameroun, conçue pour simplifier la gestion quotidienne des établissements hôteliers de toutes tailles.
 
-Présentation
+# Présentation
 Amani (qui signifie "paix" en swahili) est une application web moderne qui offre une interface intuitive pour la gestion complète d'un établissement hôtelier. Développée avec les technologies web les plus récentes, elle s'adapte parfaitement au contexte africain tout en respectant les standards internationaux.
 
-Accès par défaut
+# Accès par défaut
 
 Interface : http://localhost:3000
 Admin : tanzifelix@gmail.com / admin
