@@ -1,3 +1,15 @@
+Amani est une solution complète de gestion hôtelière développée au Cameroun, conçue pour simplifier la gestion quotidienne des établissements hôteliers de toutes tailles.
+
+Présentation
+Amani (qui signifie "paix" en swahili) est une application web moderne qui offre une interface intuitive pour la gestion complète d'un établissement hôtelier. Développée avec les technologies web les plus récentes, elle s'adapte parfaitement au contexte africain tout en respectant les standards internationaux.
+
+Accès par défaut
+
+Interface : http://localhost:3000
+Admin : tanzifelix@gmail.com / admin
+API : http://localhost:5000/api
+
+
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
