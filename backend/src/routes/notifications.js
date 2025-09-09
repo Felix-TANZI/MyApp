@@ -7,6 +7,21 @@ const router = express.Router();
 // Middleware d'authentification pour toutes les routes
 router.use(verifyAuth);
 
+// Fonction utilitaire pour parser le JSON de manière sécurisée
+const safeJsonParse = (data) => {
+  if (!data) return null;
+  if (typeof data === 'object') return data; // Déjà un objet
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data);
+    } catch (error) {
+      console.warn('Erreur parsing JSON:', error.message, 'Data:', data);
+      return null;
+    }
+  }
+  return null;
+};
+
 // GET /api/notifications - Récupérer les notifications avec pagination et filtres
 const getNotifications = async (req, res) => {
   try {
@@ -58,13 +73,16 @@ const getNotifications = async (req, res) => {
       WHERE ${userIdField} = ? AND lu = FALSE
     `, [userId]);
     
+    // Parser les données JSON de manière sécurisée
+    const processedNotifications = notifications.map(notif => ({
+      ...notif,
+      data: safeJsonParse(notif.data)
+    }));
+    
     res.json({
       success: true,
       data: {
-        notifications: notifications.map(notif => ({
-          ...notif,
-          data: notif.data ? JSON.parse(notif.data) : null
-        })),
+        notifications: processedNotifications,
         pagination: {
           page,
           limit,
@@ -115,6 +133,13 @@ const sendNotification = async (req, res) => {
     }
 
     const notificationService = req.notificationService;
+    if (!notificationService) {
+      return res.status(503).json({
+        success: false,
+        message: 'Service de notifications non disponible'
+      });
+    }
+
     const sentNotifications = [];
 
     switch (targetType) {
@@ -226,10 +251,12 @@ const markAsRead = async (req, res) => {
       });
     }
     
-    // Notifier via WebSocket
-    req.notificationService.sendToUser(userType, userId, 'notification_marked_read', { 
-      notificationId: parseInt(id) 
-    });
+    // Notifier via WebSocket si disponible
+    if (req.notificationService) {
+      req.notificationService.sendToUser(userType, userId, 'notification_marked_read', { 
+        notificationId: parseInt(id) 
+      });
+    }
     
     res.json({
       success: true,
@@ -260,10 +287,12 @@ const markAllAsRead = async (req, res) => {
       WHERE ${userIdField} = ? AND lu = FALSE
     `, [userId]);
     
-    // Notifier via WebSocket
-    req.notificationService.sendToUser(userType, userId, 'all_notifications_marked_read', { 
-      count: result.affectedRows 
-    });
+    // Notifier via WebSocket si disponible
+    if (req.notificationService) {
+      req.notificationService.sendToUser(userType, userId, 'all_notifications_marked_read', { 
+        count: result.affectedRows 
+      });
+    }
     
     res.json({
       success: true,
@@ -301,10 +330,12 @@ const deleteNotification = async (req, res) => {
       });
     }
     
-    // Notifier via WebSocket
-    req.notificationService.sendToUser(userType, userId, 'notification_deleted', { 
-      notificationId: parseInt(id) 
-    });
+    // Notifier via WebSocket si disponible
+    if (req.notificationService) {
+      req.notificationService.sendToUser(userType, userId, 'notification_deleted', { 
+        notificationId: parseInt(id) 
+      });
+    }
     
     res.json({
       success: true,
@@ -341,11 +372,13 @@ const clearAllNotifications = async (req, res) => {
       DELETE FROM ${tableName} ${whereClause}
     `, queryParams);
     
-    // Notifier via WebSocket
-    req.notificationService.sendToUser(userType, userId, 'notifications_cleared', { 
-      count: result.affectedRows,
-      onlyRead: onlyRead === 'true'
-    });
+    // Notifier via WebSocket si disponible
+    if (req.notificationService) {
+      req.notificationService.sendToUser(userType, userId, 'notifications_cleared', { 
+        count: result.affectedRows,
+        onlyRead: onlyRead === 'true'
+      });
+    }
     
     res.json({
       success: true,
@@ -425,7 +458,9 @@ const getSystemStats = async (req, res) => {
       });
     }
 
-    const connectionStats = req.notificationService.getConnectionStats();
+    const connectionStats = req.notificationService ? 
+      req.notificationService.getConnectionStats() : 
+      { connectedUsers: 0, connectedClients: 0, totalSockets: 0 };
     
     // Statistiques globales notifications
     const globalStats = await query(`
@@ -446,16 +481,21 @@ const getSystemStats = async (req, res) => {
       FROM notifications_client
     `);
     
-    // Sessions WebSocket actives
-    const activeSessions = await query(`
-      SELECT 
-        user_type,
-        COUNT(*) as active_sessions,
-        COUNT(DISTINCT CASE WHEN user_type = 'user' THEN user_id ELSE client_id END) as unique_users
-      FROM websocket_sessions 
-      WHERE is_active = TRUE
-      GROUP BY user_type
-    `);
+    // Sessions WebSocket actives (optionnel)
+    let activeSessions = [];
+    try {
+      activeSessions = await query(`
+        SELECT 
+          user_type,
+          COUNT(*) as active_sessions,
+          COUNT(DISTINCT CASE WHEN user_type = 'user' THEN user_id ELSE client_id END) as unique_users
+        FROM websocket_sessions 
+        WHERE is_active = TRUE
+        GROUP BY user_type
+      `);
+    } catch (error) {
+      console.log('Table websocket_sessions non disponible');
+    }
     
     res.json({
       success: true,
