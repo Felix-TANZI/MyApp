@@ -752,3 +752,188 @@
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
   border-radius: 12px;
 }
+
+/* Header avec notifications */
+.content-header {
+  background: white;
+  padding: 24px 32px;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-left {
+  flex: 1;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.user-info-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.user-name-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 2px;
+}
+
+.user-role-header {
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+/* Erreur de notification */
+.notification-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #dc2626;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.error-icon {
+  font-size: 18px;
+}
+
+/* Carte statistique avec badge de statut */
+.stat-card {
+  position: relative;
+  overflow: visible;
+}
+
+.stat-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.badge-connected,
+.badge-disconnected {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-connected {
+  background: rgba(16, 185, 129, 0.1);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.badge-disconnected {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  animation: pulse-badge 2s infinite;
+}
+
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* État vide pour l'activité récente */
+.no-activity {
+  text-align: center;
+  padding: 40px 20px;
+  color: #9ca3af;
+}
+
+.empty-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+  display: block;
+  opacity: 0.6;
+}
+
+.no-activity p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Responsive pour les nouvelles sections */
+@media (max-width: 768px) {
+  .content-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+    padding: 16px 20px;
+  }
+  
+  .header-right {
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .user-info-header {
+    align-items: flex-start;
+    text-align: left;
+  }
+  
+  .notification-error {
+    margin: 0 20px 20px 20px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .content-header {
+    padding: 12px 16px;
+  }
+  
+  .header-right {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .user-name-header {
+    font-size: 13px;
+  }
+  
+  .user-role-header {
+    font-size: 10px;
+  }
+  
+  .notification-error {
+    margin: 0 16px 16px 16px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  
+  .stat-badge {
+    top: 8px;
+    right: 8px;
+  }
+  
+  .badge-connected,
+  .badge-disconnected {
+    padding: 1px 6px;
+    font-size: 9px;
+  }
+}

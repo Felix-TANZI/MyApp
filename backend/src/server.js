@@ -1,6 +1,10 @@
+// backend/src/server.js
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
+const http = require('http');
+const socketIo = require('socket.io');
+const notificationService = require('./services/notificationService');
 require('dotenv').config();
 
 // Import des routes
@@ -8,10 +12,30 @@ const authRoutes = require('./routes/auth');
 const clientsRoutes = require('./routes/clients');
 const invoicesRoutes = require('./routes/invoices');
 const usersRoutes = require('./routes/users');
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Configuration CORS
+// Créer le serveur HTTP
+const server = http.createServer(app);
+
+// Configuration Socket.io avec CORS
+const io = socketIo(server, {
+  cors: {
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    methods: ['GET', 'POST'],
+    credentials: true
+  },
+  // Configuration pour la production
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000
+});
+
+// Initialiser le service de notifications
+notificationService.initialize(io);
+
+// Configuration CORS pour Express
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
@@ -23,10 +47,16 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Logger
+// Logger amélioré
 app.use((req, res, next) => {
   const timestamp = new Date().toISOString();
   console.log(`${timestamp} - ${req.method} ${req.url}`);
+  next();
+});
+
+// Middleware pour ajouter le service de notifications aux requêtes
+app.use((req, res, next) => {
+  req.notificationService = notificationService;
   next();
 });
 
@@ -41,22 +71,30 @@ async function testDB() {
       database: process.env.DB_NAME
     });
     
-    console.log('Connexion MySQL reussie');
-    console.log(`Host: ${process.env.DB_HOST}:${process.env.DB_PORT}`);
-    console.log(`Base: ${process.env.DB_NAME}`);
+    console.log('✅ Connexion MySQL réussie');
+    console.log(`📡 Host: ${process.env.DB_HOST}:${process.env.DB_PORT}`);
+    console.log(`🗄️  Base: ${process.env.DB_NAME}`);
     await connection.end();
     return true;
   } catch (error) {
-    console.error('Erreur MySQL:', error.message);
+    console.error('❌ Erreur MySQL:', error.message);
     return false;
   }
 }
 
 // Routes principales
 app.get('/', (req, res) => {
+  const stats = notificationService.getConnectionStats();
+  
   res.json({
-    message: 'API Hilton Yaounde - Systeme de Gestion des Factures',
-    version: '1.0.0',
+    message: 'API Amani - Système de Gestion des Factures avec Notifications Temps Réel',
+    version: '2.0.0',
+    notifications: {
+      service: 'active',
+      connectedUsers: stats.connectedUsers,
+      connectedClients: stats.connectedClients,
+      totalSockets: stats.totalSockets
+    },
     endpoints: [
       'GET /',
       'GET /api/health',
@@ -97,17 +135,43 @@ app.get('/', (req, res) => {
       'POST /api/invoices/:id/duplicate',
       'POST /api/invoices/:id/status',
       'PUT /api/invoices/:id',
-      'DELETE /api/invoices/:id'
+      'DELETE /api/invoices/:id',
+      
+      // Notifications endpoints
+      'GET /api/notifications',
+      'POST /api/notifications/send',
+      'PUT /api/notifications/:id/read',
+      'DELETE /api/notifications/:id',
+      'DELETE /api/notifications/clear-all',
+      'GET /api/notifications/stats'
     ],
+    websocket: {
+      endpoint: '/socket.io/',
+      events: [
+        'connection',
+        'new_notification',
+        'unread_notifications',
+        'notifications_list',
+        'mark_notification_read',
+        'notification_deleted',
+        'ping/pong'
+      ]
+    },
     timestamp: new Date().toISOString()
   });
 });
 
 app.get('/api/health', async (req, res) => {
   const dbOk = await testDB();
+  const stats = notificationService.getConnectionStats();
+  
   res.json({
     status: 'OK',
     database: dbOk ? 'Connected' : 'Error',
+    notifications: {
+      service: 'running',
+      connections: stats
+    },
     timestamp: new Date().toISOString()
   });
 });
@@ -130,29 +194,27 @@ app.use('/api/client', require('./routes/client'));
 // Routes admin pour les demandes
 app.use('/api/requests', require('./routes/requests'));
 
+// Routes notifications
+app.use('/api/notifications', require('./routes/notifications'));
+
 // Route 404
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
-    message: `Route non trouvee: ${req.method} ${req.originalUrl}`,
+    message: `Route non trouvée: ${req.method} ${req.originalUrl}`,
     availableEndpoints: [
       'GET /',
       'GET /api/health',
       'POST /api/auth/login/professional',
       'POST /api/auth/login/client',
-      'GET /api/users (Admin only)',
-      'POST /api/users (Admin only)',
-      'GET /api/clients',
-      'POST /api/clients',
-      'GET /api/invoices',
-      'POST /api/invoices'
+      'WebSocket /socket.io/'
     ]
   });
 });
 
 // Gestion erreurs globales
 app.use((error, req, res, next) => {
-  console.error('Erreur serveur:', error);
+  console.error('❌ Erreur serveur:', error);
   
   // Erreur de validation JSON
   if (error instanceof SyntaxError && error.status === 400) {
@@ -176,44 +238,39 @@ async function startServer() {
     const dbConnected = await testDB();
     
     if (!dbConnected) {
-      console.error('Impossible de se connecter a la base de donnees');
+      console.error('❌ Impossible de se connecter à la base de données');
       process.exit(1);
     }
     
-    // Démarrer le serveur
-    app.listen(PORT, () => {
-      console.log('\n================================');
-      console.log(`SERVEUR HILTON DEMARRE`);
-      console.log(`Port: ${PORT}`);
-      console.log(`URL: http://localhost:${PORT}`);
-      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`Base: ${process.env.DB_NAME}`);
-      console.log('================================');
-      console.log('Routes disponibles:');
-      console.log('- GET  /')
-      console.log('- GET  /api/health')
-      console.log('- POST /api/auth/login/professional')
-      console.log('- POST /api/auth/login/client')
-      console.log('- POST /api/auth/logout')
-      console.log('- GET  /api/auth/profile')
-      console.log('- GET  /api/users (Admin)');
-      console.log('- POST /api/users (Admin)');
-      console.log('- PUT  /api/users/:id (Admin)');
-      console.log('- DELETE /api/users/:id (Admin)');
-      console.log('- GET  /api/clients')
-      console.log('- POST /api/clients')
-      console.log('- PUT  /api/clients/:id')
-      console.log('- DELETE /api/clients/:id')
-      console.log('- GET  /api/invoices')
-      console.log('- POST /api/invoices')
-      console.log('- PUT  /api/invoices/:id')
-      console.log('- DELETE /api/invoices/:id')
-      console.log('- GET  /api/invoices/:id/pdf')
+    // Démarrer le serveur HTTP avec Socket.io
+    server.listen(PORT, () => {
+      console.log('\n🎉================================🎉');
+      console.log(`🏨 SERVEUR AMANI DÉMARRÉ`);
+      console.log(`🌐 Port: ${PORT}`);
+      console.log(`🔗 URL: http://localhost:${PORT}`);
+      console.log(`⚙️  Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🗄️  Base: ${process.env.DB_NAME}`);
+      console.log(`🔔 Notifications temps réel: ACTIVÉES`);
+      console.log(`📡 WebSocket endpoint: ws://localhost:${PORT}/socket.io/`);
+      console.log('🎉================================🎉');
+      console.log('\n📋 Routes principales:');
+      console.log('- GET  / (API info + stats connexions)');
+      console.log('- GET  /api/health (santé + stats notifications)');
+      console.log('- POST /api/auth/login/professional');
+      console.log('- POST /api/auth/login/client');
+      console.log('- WebSocket /socket.io/ (notifications temps réel)');
+      console.log('\n🔔 Événements WebSocket:');
+      console.log('- connection/disconnect');
+      console.log('- new_notification');
+      console.log('- unread_notifications');
+      console.log('- mark_notification_read');
+      console.log('- get_notifications');
+      console.log('- notification_deleted');
       console.log('================================\n');
     });
     
   } catch (error) {
-    console.error('Erreur demarrage serveur:', error);
+    console.error('❌ Erreur démarrage serveur:', error);
     process.exit(1);
   }
 }

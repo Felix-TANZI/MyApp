@@ -1,5 +1,7 @@
+// src/contexts/AuthContext.js
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import apiService from '../services/api';
+import useNotifications from '../hooks/useNotifications';
 
 // État initial
 const initialState = {
@@ -80,7 +82,7 @@ const AuthContext = createContext();
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth doit etre utilise dans AuthProvider');
+    throw new Error('useAuth doit être utilisé dans AuthProvider');
   }
   return context;
 };
@@ -88,6 +90,9 @@ export const useAuth = () => {
 // Provider
 export const AuthProvider = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
+
+  // Hook notifications - se connecte automatiquement quand l'utilisateur est authentifié
+  const notifications = useNotifications(state.user, state.userType);
 
   // Vérifier l'authentification au chargement
   useEffect(() => {
@@ -135,6 +140,12 @@ export const AuthProvider = ({ children }) => {
             userType: 'professional' 
           } 
         });
+
+        // Demander la permission pour les notifications natives
+        if ('Notification' in window) {
+          notifications.requestNotificationPermission();
+        }
+
         return { success: true };
       } else {
         dispatch({ 
@@ -168,6 +179,12 @@ export const AuthProvider = ({ children }) => {
             userType: 'client' 
           } 
         });
+
+        // Demander la permission pour les notifications natives
+        if ('Notification' in window) {
+          notifications.requestNotificationPermission();
+        }
+
         return { success: true };
       } else {
         dispatch({ 
@@ -191,6 +208,9 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: AuthActions.SET_LOADING, payload: true });
     
     try {
+      // Fermer la connexion WebSocket des notifications
+      notifications.closeSocket();
+      
       await apiService.logout();
     } catch (error) {
       console.error('Erreur logout:', error);
@@ -235,7 +255,10 @@ export const AuthProvider = ({ children }) => {
     isCommercial,
     isComptable,
     isClient,
-    isProfessional
+    isProfessional,
+    
+    // Notifications
+    notifications
   };
 
   return (

@@ -1,14 +1,31 @@
+// src/Compo/DashboardProfessional.js
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ClientsModule from './ClientsModule';
 import InvoicesModule from './InvoicesModule';
 import UsersModule from './UsersModule';
+import NotificationBadge from './NotificationBadge';
+import NotificationPanel from './NotificationPanel';
 import './DashboardProfessional.css';
 
 const DashboardProfessional = () => {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, notifications } = useAuth();
   const [currentModule, setCurrentModule] = useState('overview');
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [showNotificationPanel, setShowNotificationPanel] = useState(false);
+
+  // Destructurer les fonctions et état des notifications
+  const {
+    notifications: notificationList,
+    unreadCount,
+    isConnected,
+    error: notificationError,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification,
+    clearAllNotifications,
+    loadNotifications
+  } = notifications;
 
   // Modules disponibles selon le rôle
   const modules = [
@@ -75,10 +92,18 @@ const DashboardProfessional = () => {
     }
   };
 
+  const handleOpenNotificationPanel = () => {
+    setShowNotificationPanel(true);
+  };
+
+  const handleCloseNotificationPanel = () => {
+    setShowNotificationPanel(false);
+  };
+
   const renderModuleContent = () => {
     switch(currentModule) {
       case 'overview':
-        return <OverviewModule user={user} onNavigate={setCurrentModule} />;
+        return <OverviewModule user={user} onNavigate={setCurrentModule} notifications={notifications} />;
       case 'clients':
         return <ClientsModule user={user} />;
       case 'invoices':
@@ -90,7 +115,7 @@ const DashboardProfessional = () => {
       case 'system':
         return <SystemModule user={user} />;
       default:
-        return <OverviewModule user={user} onNavigate={setCurrentModule} />;
+        return <OverviewModule user={user} onNavigate={setCurrentModule} notifications={notifications} />;
     }
   };
 
@@ -160,26 +185,72 @@ const DashboardProfessional = () => {
       {/* Contenu principal */}
       <div className="main-content">
         <div className="content-header">
-          <h1 className="page-title">
-            {availableModules.find(m => m.id === currentModule)?.name || 'Tableau de bord'}
-          </h1>
-          <div className="breadcrumb">
-            <span>Amani</span>
-            <span className="separator">•</span>
-            <span>{availableModules.find(m => m.id === currentModule)?.name}</span>
+          <div className="header-left">
+            <h1 className="page-title">
+              {availableModules.find(m => m.id === currentModule)?.name || 'Tableau de bord'}
+            </h1>
+            <div className="breadcrumb">
+              <span>Amani</span>
+              <span className="separator">•</span>
+              <span>{availableModules.find(m => m.id === currentModule)?.name}</span>
+            </div>
+          </div>
+
+          <div className="header-right">
+            {/* Badge de notification */}
+            <NotificationBadge
+              unreadCount={unreadCount}
+              notifications={notificationList}
+              onMarkAsRead={markAsRead}
+              onMarkAllAsRead={markAllAsRead}
+              onDeleteNotification={deleteNotification}
+              onOpenPanel={handleOpenNotificationPanel}
+              isConnected={isConnected}
+              userRole={user?.role}
+            />
+
+            {/* Informations utilisateur */}
+            <div className="user-info-header">
+              <span className="user-name-header">{user.prenom} {user.nom}</span>
+              <span className="user-role-header">{user.role}</span>
+            </div>
           </div>
         </div>
 
         <div className="content-body">
+          {/* Afficher les erreurs de notification */}
+          {notificationError && (
+            <div className="notification-error">
+              <span className="error-icon">⚠️</span>
+              <span>Erreur notifications: {notificationError}</span>
+            </div>
+          )}
+
           {renderModuleContent()}
         </div>
       </div>
+
+      {/* Panneau de notifications */}
+      {showNotificationPanel && (
+        <NotificationPanel
+          notifications={notificationList}
+          unreadCount={unreadCount}
+          isConnected={isConnected}
+          onMarkAsRead={markAsRead}
+          onMarkAllAsRead={markAllAsRead}
+          onDeleteNotification={deleteNotification}
+          onClearAllNotifications={clearAllNotifications}
+          onLoadMore={() => loadNotifications(Math.ceil(notificationList.length / 20) + 1)}
+          onClose={handleCloseNotificationPanel}
+          userRole={user?.role}
+        />
+      )}
     </div>
   );
 };
 
-// Module Vue d'ensemble avec actions rapides avec accès conditionnel
-const OverviewModule = ({ user, onNavigate }) => {
+// Module Vue d'ensemble avec statistiques de notifications
+const OverviewModule = ({ user, onNavigate, notifications }) => {
   const [stats, setStats] = useState({
     totalClients: 0,
     totalFactures: 0,
@@ -231,7 +302,7 @@ const OverviewModule = ({ user, onNavigate }) => {
         }));
       }
 
-      //  Récupération des stats des utilisateurs, uniquement l'administrateur
+      // Récupération des stats des utilisateurs (admin seulement)
       if (user?.role === 'admin') {
         const usersResponse = await fetch('http://localhost:5000/api/users/stats', {
           headers: {
@@ -255,37 +326,38 @@ const OverviewModule = ({ user, onNavigate }) => {
   };
 
   const fetchRecentActivity = async () => {
-    // Simulation de l'activité récente pour l'instant
-    setRecentActivity([
-      {
-        id: 1,
-        action: 'Facture créée',
-        description: 'Facture HILT-2025-001 pour CAMTEL SA',
-        time: 'Il y a 1 heure',
-        icon: '📄'
-      },
-      {
-        id: 2,
-        action: 'Client créé',
-        description: 'Nouveau client Orange Cameroun ajouté',
-        time: 'Il y a 2 heures',
-        icon: '👥'
-      },
-      {
-        id: 3,
-        action: 'Paiement reçu',
-        description: 'Paiement facture HILT-2024-089',
-        time: 'Il y a 4 heures',
-        icon: '💳'
-      },
-      ...(user?.role === 'admin' ? [{
-        id: 4,
-        action: 'Utilisateur créé',
-        description: 'Nouvel utilisateur commercial ajouté',
-        time: 'Il y a 6 heures',
-        icon: '⚙️'
-      }] : [])
-    ]);
+    // Utiliser les notifications récentes comme activité
+    const recentNotifications = notifications.notifications?.slice(0, 5) || [];
+    const activity = recentNotifications.map(notif => ({
+      id: notif.id,
+      action: notif.titre,
+      description: notif.message,
+      time: formatRelativeTime(notif.date_creation),
+      icon: getActivityIcon(notif.type)
+    }));
+
+    setRecentActivity(activity);
+  };
+
+  const getActivityIcon = (type) => {
+    const icons = {
+      'facture_nouvelle': '📄',
+      'paiement_recu': '💰',
+      'client_nouveau': '👥',
+      'demande_client': '📝'
+    };
+    return icons[type] || '🔔';
+  };
+
+  const formatRelativeTime = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffHours = Math.floor((now - date) / (1000 * 60 * 60));
+    
+    if (diffHours < 1) return 'À l\'instant';
+    if (diffHours < 24) return `Il y a ${diffHours}h`;
+    if (diffHours < 48) return 'Hier';
+    return date.toLocaleDateString('fr-FR');
   };
 
   const formatCurrency = (amount) => {
@@ -347,6 +419,7 @@ const OverviewModule = ({ user, onNavigate }) => {
 
   return (
     <div className="overview-module">
+      {/* Statistiques avec notifications */}
       <div className="stats-grid">
         <div className="stat-card blue">
           <div className="stat-icon">👥</div>
@@ -372,21 +445,29 @@ const OverviewModule = ({ user, onNavigate }) => {
           </div>
         </div>
 
-        {/* ✅ Stat utilisateurs visible uniquement pour les admins */}
-        {user?.role === 'admin' ? (
+        {/* Carte notifications */}
+        <div className="stat-card orange">
+          <div className="stat-icon">🔔</div>
+          <div className="stat-content">
+            <h3 className="stat-value">{notifications.unreadCount || 0}</h3>
+            <p className="stat-label">Notifications non lues</p>
+          </div>
+          <div className="stat-badge">
+            {notifications.isConnected ? (
+              <span className="badge-connected">En ligne</span>
+            ) : (
+              <span className="badge-disconnected">Hors ligne</span>
+            )}
+          </div>
+        </div>
+
+        {/* Stat utilisateurs visible uniquement pour les admins */}
+        {user?.role === 'admin' && (
           <div className="stat-card red">
             <div className="stat-icon">⚙️</div>
             <div className="stat-content">
               <h3 className="stat-value">{stats.totalUsers}</h3>
               <p className="stat-label">Utilisateurs système</p>
-            </div>
-          </div>
-        ) : (
-          <div className="stat-card orange">
-            <div className="stat-icon">⚠️</div>
-            <div className="stat-content">
-              <h3 className="stat-value">{stats.facturesEnRetard}</h3>
-              <p className="stat-label">Factures en retard</p>
             </div>
           </div>
         )}
@@ -411,15 +492,22 @@ const OverviewModule = ({ user, onNavigate }) => {
       <div className="recent-activity">
         <h2>Activité récente</h2>
         <div className="activity-list">
-          {recentActivity.map((item) => (
-            <div key={item.id} className="activity-item">
-              <div className="activity-icon">{item.icon}</div>
-              <div className="activity-content">
-                <p><strong>{item.action}:</strong> {item.description}</p>
-                <span className="activity-time">{item.time}</span>
+          {recentActivity.length > 0 ? (
+            recentActivity.map((item) => (
+              <div key={item.id} className="activity-item">
+                <div className="activity-icon">{item.icon}</div>
+                <div className="activity-content">
+                  <p><strong>{item.action}:</strong> {item.description}</p>
+                  <span className="activity-time">{item.time}</span>
+                </div>
               </div>
+            ))
+          ) : (
+            <div className="no-activity">
+              <span className="empty-icon">📭</span>
+              <p>Aucune activité récente</p>
             </div>
-          ))}
+          )}
         </div>
       </div>
     </div>
