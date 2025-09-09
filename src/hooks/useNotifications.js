@@ -8,155 +8,207 @@ const useNotifications = (user, userType) => {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState(null);
   const socketRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
+  const isInitializingRef = useRef(false);
 
-  // Initialiser la connexion WebSocket
-  const initializeSocket = useCallback(() => {
-    if (!user || socketRef.current) return;
+  // Fonction de nettoyage
+  const cleanup = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
 
-    const token = localStorage.getItem('accessToken');
-    if (!token) return;
-
-    console.log('🔌 Connexion WebSocket notifications...');
-
-    socketRef.current = io(process.env.REACT_APP_API_URL || 'http://localhost:5000', {
-      auth: {
-        token: token
-      },
-      transports: ['websocket', 'polling'],
-      timeout: 20000,
-      forceNew: false
-    });
-
-    const socket = socketRef.current;
-
-    // Événements de connexion
-    socket.on('connect', () => {
-      console.log('✅ WebSocket connecté:', socket.id);
-      setIsConnected(true);
-      setError(null);
-    });
-
-    socket.on('disconnect', (reason) => {
-      console.log('❌ WebSocket déconnecté:', reason);
-      setIsConnected(false);
-      if (reason === 'io server disconnect') {
-        // Reconnexion automatique si le serveur ferme la connexion
-        socket.connect();
-      }
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('❌ Erreur connexion WebSocket:', error);
-      setError(error.message);
-      setIsConnected(false);
-    });
-
-    // Événements notifications
-    socket.on('new_notification', (notification) => {
-      console.log('🔔 Nouvelle notification reçue:', notification);
-      
-      setNotifications(prev => [notification, ...prev]);
-      setUnreadCount(prev => prev + 1);
-      
-      // Optionnel : Afficher une notification native du navigateur
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(notification.titre, {
-          body: notification.message,
-          icon: '/favicon.ico',
-          tag: `notification-${notification.id}`
-        });
-      }
-    });
-
-    socket.on('unread_notifications', (data) => {
-      console.log('📬 Notifications non lues reçues:', data);
-      setNotifications(prev => {
-        const existingIds = new Set(prev.map(n => n.id));
-        const newNotifications = data.notifications.filter(n => !existingIds.has(n.id));
-        return [...newNotifications, ...prev];
-      });
-      setUnreadCount(data.count);
-    });
-
-    socket.on('notifications_list', (data) => {
-      console.log('📋 Liste notifications reçue:', data);
-      setNotifications(data.notifications);
-    });
-
-    socket.on('notification_marked_read', (data) => {
-      console.log('✅ Notification marquée comme lue:', data.notificationId);
-      setNotifications(prev => 
-        prev.map(notif => 
-          notif.id === data.notificationId 
-            ? { ...notif, lu: true, date_lecture: new Date().toISOString() }
-            : notif
-        )
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    });
-
-    socket.on('all_notifications_marked_read', (data) => {
-      console.log('✅ Toutes notifications marquées comme lues:', data.count);
-      setNotifications(prev => 
-        prev.map(notif => ({ ...notif, lu: true, date_lecture: new Date().toISOString() }))
-      );
-      setUnreadCount(0);
-    });
-
-    socket.on('notification_deleted', (data) => {
-      console.log('🗑️ Notification supprimée:', data.notificationId);
-      setNotifications(prev => 
-        prev.filter(notif => notif.id !== data.notificationId)
-      );
-      // Recalculer le compteur non lu
-      setUnreadCount(prev => {
-        const deletedNotif = notifications.find(n => n.id === data.notificationId);
-        return deletedNotif && !deletedNotif.lu ? Math.max(0, prev - 1) : prev;
-      });
-    });
-
-    socket.on('notifications_cleared', (data) => {
-      console.log('🧹 Notifications supprimées:', data);
-      if (data.onlyRead) {
-        setNotifications(prev => prev.filter(notif => !notif.lu));
-      } else {
-        setNotifications([]);
-        setUnreadCount(0);
-      }
-    });
-
-    socket.on('error', (error) => {
-      console.error('❌ Erreur WebSocket:', error);
-      setError(error.message);
-    });
-
-    // Ping périodique pour maintenir la connexion
-    const pingInterval = setInterval(() => {
-      if (socket.connected) {
-        socket.emit('ping');
-      }
-    }, 30000);
-
-    socket.on('pong', () => {
-      // Connexion toujours active
-    });
-
-    // Nettoyer l'intervalle à la déconnexion
-    socket.on('disconnect', () => {
-      clearInterval(pingInterval);
-    });
-
-  }, [user, notifications]);
-
-  // Fermer la connexion
-  const closeSocket = useCallback(() => {
     if (socketRef.current) {
       console.log('🔌 Fermeture connexion WebSocket');
+      socketRef.current.removeAllListeners();
       socketRef.current.disconnect();
       socketRef.current = null;
       setIsConnected(false);
+      isInitializingRef.current = false;
     }
   }, []);
+
+  // Initialiser la connexion WebSocket
+  const initializeSocket = useCallback(() => {
+    // Éviter les initialisations multiples
+    if (!user || isInitializingRef.current || socketRef.current) {
+      return;
+    }
+
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      console.log('❌ Pas de token, connexion WebSocket annulée');
+      return;
+    }
+
+    isInitializingRef.current = true;
+    console.log('🔌 Connexion WebSocket notifications...');
+
+    try {
+      socketRef.current = io(process.env.REACT_APP_API_URL || 'http://localhost:5000', {
+        auth: { token },
+        transports: ['websocket', 'polling'],
+        timeout: 20000,
+        forceNew: false,
+        autoConnect: true,
+        reconnection: true,
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: 10000,
+        maxReconnectionAttempts: 5
+      });
+
+      const socket = socketRef.current;
+
+      // Événements de connexion
+      socket.on('connect', () => {
+        console.log('✅ WebSocket connecté:', socket.id);
+        setIsConnected(true);
+        setError(null);
+        isInitializingRef.current = false;
+      });
+
+      socket.on('disconnect', (reason) => {
+        console.log('❌ WebSocket déconnecté:', reason);
+        setIsConnected(false);
+        
+        // Ne pas reconnecter automatiquement si c'est intentionnel
+        if (reason === 'io client disconnect') {
+          console.log('Déconnexion intentionnelle');
+          return;
+        }
+        
+        // Reconnexion automatique avec délai
+        if (reason === 'io server disconnect') {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (socketRef.current && !socketRef.current.connected) {
+              console.log('Tentative de reconnexion...');
+              socket.connect();
+            }
+          }, 3000);
+        }
+      });
+
+      socket.on('connect_error', (error) => {
+        console.error('❌ Erreur connexion WebSocket:', error.message);
+        setError(error.message);
+        setIsConnected(false);
+        isInitializingRef.current = false;
+      });
+
+      // Événements notifications
+      socket.on('new_notification', (notification) => {
+        console.log('🔔 Nouvelle notification reçue:', notification);
+        
+        setNotifications(prev => {
+          // Éviter les doublons
+          const exists = prev.some(n => n.id === notification.id);
+          if (exists) return prev;
+          return [notification, ...prev];
+        });
+        
+        setUnreadCount(prev => prev + 1);
+        
+        // Notification native du navigateur
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification(notification.titre, {
+            body: notification.message,
+            icon: '/favicon.ico',
+            tag: `notification-${notification.id}`
+          });
+        }
+      });
+
+      socket.on('unread_notifications', (data) => {
+        console.log('📬 Notifications non lues reçues:', data);
+        if (data.notifications && Array.isArray(data.notifications)) {
+          setNotifications(prev => {
+            const existingIds = new Set(prev.map(n => n.id));
+            const newNotifications = data.notifications.filter(n => !existingIds.has(n.id));
+            return [...newNotifications, ...prev];
+          });
+          setUnreadCount(data.count || 0);
+        }
+      });
+
+      socket.on('notifications_list', (data) => {
+        console.log('📋 Liste notifications reçue:', data);
+        if (data.notifications && Array.isArray(data.notifications)) {
+          setNotifications(data.notifications);
+        }
+      });
+
+      socket.on('notification_marked_read', (data) => {
+        console.log('✅ Notification marquée comme lue:', data.notificationId);
+        setNotifications(prev => 
+          prev.map(notif => 
+            notif.id === data.notificationId 
+              ? { ...notif, lu: true, date_lecture: new Date().toISOString() }
+              : notif
+          )
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      });
+
+      socket.on('all_notifications_marked_read', (data) => {
+        console.log('✅ Toutes notifications marquées comme lues:', data.count);
+        setNotifications(prev => 
+          prev.map(notif => ({ ...notif, lu: true, date_lecture: new Date().toISOString() }))
+        );
+        setUnreadCount(0);
+      });
+
+      socket.on('notification_deleted', (data) => {
+        console.log('🗑️ Notification supprimée:', data.notificationId);
+        setNotifications(prev => {
+          const deletedNotif = prev.find(n => n.id === data.notificationId);
+          const filtered = prev.filter(notif => notif.id !== data.notificationId);
+          
+          // Ajuster le compteur si la notification supprimée était non lue
+          if (deletedNotif && !deletedNotif.lu) {
+            setUnreadCount(current => Math.max(0, current - 1));
+          }
+          
+          return filtered;
+        });
+      });
+
+      socket.on('notifications_cleared', (data) => {
+        console.log('🧹 Notifications supprimées:', data);
+        if (data.onlyRead) {
+          setNotifications(prev => prev.filter(notif => !notif.lu));
+        } else {
+          setNotifications([]);
+          setUnreadCount(0);
+        }
+      });
+
+      socket.on('error', (error) => {
+        console.error('❌ Erreur WebSocket:', error);
+        setError(error.message || 'Erreur de connexion');
+      });
+
+      // Ping périodique plus intelligent
+      const pingInterval = setInterval(() => {
+        if (socket.connected) {
+          socket.emit('ping');
+        }
+      }, 45000); // Toutes les 45 secondes
+
+      socket.on('pong', () => {
+        // Connexion active confirmée
+      });
+
+      // Nettoyer l'intervalle à la déconnexion
+      socket.on('disconnect', () => {
+        clearInterval(pingInterval);
+      });
+
+    } catch (error) {
+      console.error('Erreur initialisation socket:', error);
+      setError('Impossible d\'initialiser les notifications');
+      isInitializingRef.current = false;
+    }
+  }, [user]);
 
   // Marquer une notification comme lue
   const markAsRead = useCallback(async (notificationId) => {
@@ -269,12 +321,12 @@ const useNotifications = (user, userType) => {
       const data = await response.json();
       
       if (page === 1) {
-        setNotifications(data.data.notifications);
+        setNotifications(data.data.notifications || []);
       } else {
-        setNotifications(prev => [...prev, ...data.data.notifications]);
+        setNotifications(prev => [...prev, ...(data.data.notifications || [])]);
       }
       
-      setUnreadCount(data.data.unread_count);
+      setUnreadCount(data.data.unread_count || 0);
       return data.data;
     } catch (error) {
       console.error('Erreur chargement notifications:', error);
@@ -292,48 +344,33 @@ const useNotifications = (user, userType) => {
     return Notification.permission === 'granted';
   }, []);
 
-  // Envoyer une notification (admin seulement)
-  const sendNotification = useCallback(async (notificationData) => {
-    try {
-      const response = await fetch('http://localhost:5000/api/notifications/send', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(notificationData)
-      });
+  // Fermer la connexion
+  const closeSocket = useCallback(() => {
+    cleanup();
+  }, [cleanup]);
 
-      if (!response.ok) {
-        throw new Error('Erreur lors de l\'envoi');
-      }
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Erreur envoi notification:', error);
-      setError('Impossible d\'envoyer la notification');
-      return null;
-    }
-  }, []);
-
-  // Effets
+  // Effet principal
   useEffect(() => {
     if (user) {
-      initializeSocket();
+      // Délai pour éviter les initialisations multiples rapides
+      const timer = setTimeout(() => {
+        initializeSocket();
+      }, 100);
+
+      return () => {
+        clearTimeout(timer);
+      };
+    } else {
+      cleanup();
     }
+  }, [user, initializeSocket, cleanup]);
 
-    return () => {
-      closeSocket();
-    };
-  }, [user, initializeSocket, closeSocket]);
-
-  // Charger les notifications initiales
+  // Charger les notifications initiales une seule fois
   useEffect(() => {
-    if (user && isConnected) {
+    if (user && isConnected && notifications.length === 0) {
       loadNotifications(1, 20);
     }
-  }, [user, isConnected, loadNotifications]);
+  }, [user, isConnected]);
 
   // Nettoyer les erreurs après 5 secondes
   useEffect(() => {
@@ -342,6 +379,13 @@ const useNotifications = (user, userType) => {
       return () => clearTimeout(timer);
     }
   }, [error]);
+
+  // Nettoyage au démontage
+  useEffect(() => {
+    return () => {
+      cleanup();
+    };
+  }, [cleanup]);
 
   return {
     // État
@@ -356,7 +400,6 @@ const useNotifications = (user, userType) => {
     deleteNotification,
     clearAllNotifications,
     loadNotifications,
-    sendNotification,
     requestNotificationPermission,
     
     // Utilitaires

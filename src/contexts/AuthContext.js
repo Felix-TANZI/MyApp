@@ -1,5 +1,5 @@
 // src/contexts/AuthContext.js
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
 import apiService from '../services/api';
 import useNotifications from '../hooks/useNotifications';
 
@@ -90,37 +90,61 @@ export const useAuth = () => {
 // Provider
 export const AuthProvider = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
+  const initializationRef = useRef(false);
+  const notificationsRef = useRef(null);
 
-  // Hook notifications - se connecte automatiquement quand l'utilisateur est authentifié
+  // Hook notifications - initialisation différée
   const notifications = useNotifications(state.user, state.userType);
-
-  // Vérifier l'authentification au chargement
+  
+  // Stocker la référence des notifications
   useEffect(() => {
-    checkAuthStatus();
+    notificationsRef.current = notifications;
+  }, [notifications]);
+
+  // Vérifier l'authentification au chargement - une seule fois
+  useEffect(() => {
+    if (!initializationRef.current) {
+      initializationRef.current = true;
+      checkAuthStatus();
+    }
   }, []);
 
   const checkAuthStatus = async () => {
     dispatch({ type: AuthActions.SET_LOADING, payload: true });
 
     try {
+      // Vérifier si on a un token stocké
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        dispatch({ type: AuthActions.LOGOUT });
+        return;
+      }
+
+      // Vérifier la validité du token
       const response = await apiService.verifyAuth();
       
       if (response.success) {
         const currentUser = apiService.getCurrentUser();
         const userType = apiService.getUserType();
         
-        dispatch({ 
-          type: AuthActions.LOGIN_SUCCESS, 
-          payload: { 
-            user: currentUser,
-            userType 
-          } 
-        });
+        if (currentUser && userType) {
+          dispatch({ 
+            type: AuthActions.LOGIN_SUCCESS, 
+            payload: { 
+              user: currentUser,
+              userType 
+            } 
+          });
+        } else {
+          throw new Error('Données utilisateur incomplètes');
+        }
       } else {
-        dispatch({ type: AuthActions.LOGOUT });
+        throw new Error(response.message || 'Token invalide');
       }
     } catch (error) {
       console.error('Erreur vérification auth:', error);
+      // Nettoyer les données en cas d'erreur
+      apiService.removeToken();
       dispatch({ type: AuthActions.LOGOUT });
     }
   };
@@ -130,6 +154,11 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: AuthActions.SET_LOADING, payload: true });
 
     try {
+      // Fermer d'abord toute connexion WebSocket existante
+      if (notificationsRef.current?.closeSocket) {
+        notificationsRef.current.closeSocket();
+      }
+
       const response = await apiService.loginProfessional(credentials);
       
       if (response.success) {
@@ -141,10 +170,12 @@ export const AuthProvider = ({ children }) => {
           } 
         });
 
-        // Demander la permission pour les notifications natives
-        if ('Notification' in window) {
-          notifications.requestNotificationPermission();
-        }
+        // Demander la permission pour les notifications natives après un délai
+        setTimeout(() => {
+          if ('Notification' in window && notificationsRef.current?.requestNotificationPermission) {
+            notificationsRef.current.requestNotificationPermission();
+          }
+        }, 1000);
 
         return { success: true };
       } else {
@@ -169,6 +200,11 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: AuthActions.SET_LOADING, payload: true });
 
     try {
+      // Fermer d'abord toute connexion WebSocket existante
+      if (notificationsRef.current?.closeSocket) {
+        notificationsRef.current.closeSocket();
+      }
+
       const response = await apiService.loginClient(credentials);
       
       if (response.success) {
@@ -180,10 +216,12 @@ export const AuthProvider = ({ children }) => {
           } 
         });
 
-        // Demander la permission pour les notifications natives
-        if ('Notification' in window) {
-          notifications.requestNotificationPermission();
-        }
+        // Demander la permission pour les notifications natives après un délai
+        setTimeout(() => {
+          if ('Notification' in window && notificationsRef.current?.requestNotificationPermission) {
+            notificationsRef.current.requestNotificationPermission();
+          }
+        }, 1000);
 
         return { success: true };
       } else {
@@ -208,13 +246,17 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: AuthActions.SET_LOADING, payload: true });
     
     try {
-      // Fermer la connexion WebSocket des notifications
-      notifications.closeSocket();
-      
+      // Fermer la connexion WebSocket des notifications en premier
+      if (notificationsRef.current?.closeSocket) {
+        notificationsRef.current.closeSocket();
+      }
+
+      // Ensuite faire le logout API
       await apiService.logout();
     } catch (error) {
       console.error('Erreur logout:', error);
     } finally {
+      // Toujours nettoyer l'état même en cas d'erreur
       dispatch({ type: AuthActions.LOGOUT });
     }
   };
@@ -226,10 +268,27 @@ export const AuthProvider = ({ children }) => {
 
   // Mettre à jour le profil
   const updateProfile = (updatedUser) => {
+    // Mettre à jour aussi dans le localStorage
+    localStorage.setItem('userProfile', JSON.stringify(updatedUser));
+    
     dispatch({ 
       type: AuthActions.UPDATE_PROFILE, 
       payload: updatedUser 
     });
+  };
+
+  // Rafraîchir le profil depuis l'API
+  const refreshProfile = async () => {
+    try {
+      const response = await apiService.getProfile();
+      if (response.success) {
+        updateProfile(response.profile);
+        return response.profile;
+      }
+    } catch (error) {
+      console.error('Erreur rafraîchissement profil:', error);
+    }
+    return null;
   };
 
   // Utilitaires
@@ -238,6 +297,40 @@ export const AuthProvider = ({ children }) => {
   const isComptable = () => state.user && (state.user.role === 'comptable' || state.user.role === 'admin');
   const isClient = () => state.userType === 'client';
   const isProfessional = () => state.userType === 'professional';
+
+  // Vérifier les permissions pour certaines actions
+  const hasPermission = (permission) => {
+    if (!state.user) return false;
+
+    const rolePermissions = {
+      'admin': ['*'], // Toutes les permissions
+      'commercial': ['clients.read', 'clients.write', 'invoices.read', 'invoices.write'],
+      'comptable': ['clients.read', 'invoices.read', 'invoices.write', 'payments.read', 'payments.write']
+    };
+
+    const userPermissions = rolePermissions[state.user.role] || [];
+    return userPermissions.includes('*') || userPermissions.includes(permission);
+  };
+
+  // Fonction utilitaire pour gérer la déconnexion automatique
+  const handleSessionExpired = () => {
+    console.log('Session expirée, déconnexion automatique');
+    logout();
+  };
+
+  // Écouter les erreurs d'authentification globales
+  useEffect(() => {
+    const handleAuthError = (event) => {
+      if (event.detail && event.detail.type === 'auth_error') {
+        handleSessionExpired();
+      }
+    };
+
+    window.addEventListener('auth_error', handleAuthError);
+    return () => {
+      window.removeEventListener('auth_error', handleAuthError);
+    };
+  }, []);
 
   const value = {
     // État
@@ -249,6 +342,7 @@ export const AuthProvider = ({ children }) => {
     logout,
     clearError,
     updateProfile,
+    refreshProfile,
     
     // Utilitaires
     isAdmin,
@@ -256,6 +350,8 @@ export const AuthProvider = ({ children }) => {
     isComptable,
     isClient,
     isProfessional,
+    hasPermission,
+    handleSessionExpired,
     
     // Notifications
     notifications
