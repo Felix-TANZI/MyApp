@@ -1,8 +1,7 @@
-// backend/src/routes/client.js
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { verifyAuth } = require('../controllers/authController');
-const { requireAuth } = require('../middleware/permissions'); // Utilise votre système
+const { requireAuth } = require('../middleware/permissions');
 
 const {
   getMyInvoices,
@@ -54,7 +53,7 @@ const requireClient = (req, res, next) => {
 
 // Appliquer les middlewares à toutes les routes
 router.use(verifyAuth);
-router.use(requireAuth); // Utilise votre middleware
+router.use(requireAuth); // Utilise middleware
 router.use(requireClient);
 router.use(clientLimiter);
 

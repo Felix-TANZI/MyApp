@@ -1,4 +1,3 @@
-// src/components/NotificationBadge.js
 import React, { useState, useRef, useEffect } from 'react';
 import './NotificationBadge.css';
 
@@ -10,24 +9,44 @@ const NotificationBadge = ({
   onDeleteNotification,
   onOpenPanel,
   isConnected,
-  userRole // Pour permissions admin
+  userRole
 }) => {
   const [showPreview, setShowPreview] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const previewRef = useRef(null);
+  const badgeRef = useRef(null);
 
   // Fermer le preview si on clique ailleurs
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (previewRef.current && !previewRef.current.contains(event.target)) {
+      if (previewRef.current && !previewRef.current.contains(event.target) &&
+          badgeRef.current && !badgeRef.current.contains(event.target)) {
         setShowPreview(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    if (showPreview) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, []);
+  }, [showPreview]);
+
+  // Fermer avec Escape
+  useEffect(() => {
+    const handleEscape = (event) => {
+      if (event.key === 'Escape' && showPreview) {
+        setShowPreview(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showPreview]);
 
   const getNotificationIcon = (type) => {
     const icons = {
@@ -57,21 +76,80 @@ const NotificationBadge = ({
     if (diffMinutes < 60) return `Il y a ${diffMinutes}min`;
     if (diffHours < 24) return `Il y a ${diffHours}h`;
     if (diffDays < 7) return `Il y a ${diffDays}j`;
-    return date.toLocaleDateString('fr-FR');
+    return date.toLocaleDateString('fr-FR', { 
+      day: '2-digit', 
+      month: '2-digit' 
+    });
   };
 
+  const handleBadgeClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowPreview(!showPreview);
+  };
+
+  const handleMarkAllAsRead = async () => {
+    if (unreadCount === 0 || isLoading) return;
+    
+    setIsLoading(true);
+    try {
+      await onMarkAllAsRead();
+    } catch (error) {
+      console.error('Erreur marquage toutes notifications:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMarkAsRead = async (notificationId, event) => {
+    event?.stopPropagation();
+    if (isLoading) return;
+
+    setIsLoading(true);
+    try {
+      await onMarkAsRead(notificationId);
+    } catch (error) {
+      console.error('Erreur marquage notification:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteNotification = async (notificationId, event) => {
+    event?.stopPropagation();
+    if (isLoading) return;
+
+    setIsLoading(true);
+    try {
+      await onDeleteNotification(notificationId);
+    } catch (error) {
+      console.error('Erreur suppression notification:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleOpenPanel = () => {
+    setShowPreview(false);
+    onOpenPanel();
+  };
+
+  // Limiter les notifications affichées dans le preview
   const recentNotifications = notifications.slice(0, 5);
 
   return (
-    <div className="notification-badge-container" ref={previewRef}>
+    <div className="notification-badge-container">
       {/* Badge principal */}
       <button 
+        ref={badgeRef}
         className={`notification-badge ${!isConnected ? 'disconnected' : ''}`}
-        onClick={() => setShowPreview(!showPreview)}
+        onClick={handleBadgeClick}
         title={isConnected ? 
           `${unreadCount} notification${unreadCount !== 1 ? 's' : ''} non lue${unreadCount !== 1 ? 's' : ''}` :
-          'Notifications déconnectées'
+          'Notifications déconnectées - Cliquez pour voir'
         }
+        aria-label={`Notifications: ${unreadCount} non lues`}
+        aria-expanded={showPreview}
       >
         <span className="badge-icon">🔔</span>
         
@@ -86,30 +164,32 @@ const NotificationBadge = ({
         <span className={`connection-indicator ${isConnected ? 'connected' : 'disconnected'}`} />
       </button>
 
-      {/* Preview des notifications */}
+      {/* Preview des notifications - Position fixe pour éviter l'expansion */}
       {showPreview && (
-        <div className="notification-preview">
+        <div ref={previewRef} className="notification-preview">
           <div className="preview-header">
-            <h3>Notifications</h3>
+            <h3>
+              <span className="header-icon">🔔</span>
+              Notifications
+              {unreadCount > 0 && ` (${unreadCount})`}
+            </h3>
             <div className="preview-actions">
               {unreadCount > 0 && (
                 <button 
                   className="btn-mark-all"
-                  onClick={onMarkAllAsRead}
+                  onClick={handleMarkAllAsRead}
+                  disabled={isLoading}
                   title="Marquer toutes comme lues"
                 >
-                  ✅
+                  {isLoading ? '⏳' : '✅'} Tout marquer
                 </button>
               )}
               <button 
                 className="btn-open-panel"
-                onClick={() => {
-                  setShowPreview(false);
-                  onOpenPanel();
-                }}
+                onClick={handleOpenPanel}
                 title="Ouvrir le panneau complet"
               >
-                📋
+                📋 Voir tout
               </button>
             </div>
           </div>
@@ -125,14 +205,14 @@ const NotificationBadge = ({
             {recentNotifications.length === 0 ? (
               <div className="no-notifications">
                 <span className="empty-icon">📭</span>
-                <p>Aucune notification</p>
+                <p>Aucune notification récente</p>
               </div>
             ) : (
               <div className="notifications-list">
-                {recentNotifications.map((notification) => (
+                {recentNotifications.map((notification, index) => (
                   <div 
                     key={notification.id}
-                    className={`notification-item ${!notification.lu ? 'unread' : 'read'}`}
+                    className={`notification-item ${!notification.lu ? 'unread' : 'read'} ${index === 0 && !notification.lu ? 'new' : ''}`}
                   >
                     <div className="notification-icon">
                       {getNotificationIcon(notification.type)}
@@ -154,10 +234,8 @@ const NotificationBadge = ({
                       {!notification.lu && (
                         <button 
                           className="btn-mark-read"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onMarkAsRead(notification.id);
-                          }}
+                          onClick={(e) => handleMarkAsRead(notification.id, e)}
+                          disabled={isLoading}
                           title="Marquer comme lu"
                         >
                           ✅
@@ -165,10 +243,8 @@ const NotificationBadge = ({
                       )}
                       <button 
                         className="btn-delete"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteNotification(notification.id);
-                        }}
+                        onClick={(e) => handleDeleteNotification(notification.id, e)}
+                        disabled={isLoading}
                         title="Supprimer"
                       >
                         🗑️
@@ -185,16 +261,21 @@ const NotificationBadge = ({
               <div className="preview-footer">
                 <button 
                   className="btn-see-all"
-                  onClick={() => {
-                    setShowPreview(false);
-                    onOpenPanel();
-                  }}
+                  onClick={handleOpenPanel}
                 >
                   Voir toutes les notifications ({notifications.length})
                 </button>
               </div>
             )}
           </div>
+
+          {/* État de chargement */}
+          {isLoading && (
+            <div className="loading-notifications">
+              <div className="loading-spinner"></div>
+              <span>Traitement...</span>
+            </div>
+          )}
         </div>
       )}
     </div>

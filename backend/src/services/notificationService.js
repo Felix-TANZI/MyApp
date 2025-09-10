@@ -1,4 +1,3 @@
-// backend/src/services/notificationService.js
 const { query } = require('../utils/auth');
 const jwt = require('jsonwebtoken');
 

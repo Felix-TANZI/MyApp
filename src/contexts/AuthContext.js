@@ -1,4 +1,3 @@
-// src/contexts/AuthContext.js
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
 import apiService from '../services/api';
 import useNotifications from '../hooks/useNotifications';

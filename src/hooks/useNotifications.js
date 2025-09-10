@@ -1,4 +1,3 @@
-// src/hooks/useNotifications.js
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 

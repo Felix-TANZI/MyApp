@@ -1,4 +1,3 @@
-// backend/src/routes/notifications.js
 const express = require('express');
 const { verifyAuth } = require('../controllers/authController');
 const { query } = require('../utils/auth');

@@ -1,4 +1,3 @@
-// src/components/NotificationPanel.js
 import React, { useState, useEffect } from 'react';
 import './NotificationPanel.css';
 
