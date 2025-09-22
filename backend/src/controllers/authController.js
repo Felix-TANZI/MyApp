@@ -260,6 +260,70 @@ const verifyAuth = async (req, res, next) => {
   }
 };
 
+// NOUVEAU: Middleware d'authentification spécifique pour le chat
+const verifyChatAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token requis pour le chat'
+      });
+    }
+
+    const session = await getSession(token);
+    if (!session) {
+      return res.status(401).json({
+        success: false,
+        message: 'Session expirée'
+      });
+    }
+
+    // Récupérer les détails de l'utilisateur selon le type
+    let userDetails = null;
+    if (session.user_type === 'user') {
+      const users = await query(
+        'SELECT id, nom, prenom, role FROM users WHERE id = ? AND statut = "actif"',
+        [session.user_id]
+      );
+      userDetails = users[0] || null;
+    } else if (session.user_type === 'client') {
+      const clients = await query(
+        'SELECT id, code_client, nom, prenom FROM clients WHERE id = ? AND statut = "actif"',
+        [session.client_id]
+      );
+      userDetails = clients[0] || null;
+    }
+
+    if (!userDetails) {
+      return res.status(401).json({
+        success: false,
+        message: 'Utilisateur non trouvé ou inactif'
+      });
+    }
+
+    // Ajouter les infos détaillées à la requête
+    req.user = {
+      id: session.user_id || session.client_id,
+      type: session.user_type,
+      sessionId: session.id,
+      userType: session.user_type, // Alias pour compatibilité
+      details: userDetails
+    };
+
+    next();
+
+  } catch (error) {
+    console.error('Erreur auth chat:', error);
+    res.status(403).json({
+      success: false,
+      message: 'Erreur d\'authentification chat'
+    });
+  }
+};
+
 // Profil utilisateur
 const getProfile = async (req, res) => {
   try {
@@ -307,5 +371,6 @@ module.exports = {
   loginClient,
   logout,
   verifyAuth,
+  verifyChatAuth, // NOUVEAU: Export du middleware chat
   getProfile
 };

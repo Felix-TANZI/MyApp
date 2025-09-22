@@ -1,6 +1,6 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { verifyChatAuth } = require('../controllers/authController');
+const { verifyChatAuth } = require('../controllers/authController'); // Correction de l'import
 const { requireAuth } = require('../middleware/permissions');
 
 const {
@@ -40,7 +40,7 @@ const createConversationLimiter = rateLimit({
 });
 
 // Middleware d'authentification pour toutes les routes 
-router.use(verifyChatAuth); // Au lieu de verifyAuth et requireAuth
+router.use(verifyChatAuth); // Utilisation du bon middleware
 router.use(chatLimiter);
 
 // GET /api/chat/conversations - Liste des conversations

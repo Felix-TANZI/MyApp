@@ -39,11 +39,13 @@ try {
   console.log('⚠️ Service de chat non disponible:', error.message);
 }
 
+// Import OBLIGATOIRE des routes chat (maintenant qu'on a corrigé le middleware)
 try {
   chatRoutes = require('./routes/chat');
   console.log('✅ Routes chat chargées');
 } catch (error) {
-  console.log('⚠️ Routes chat non disponibles:', error.message);
+  console.log('❌ ERREUR CRITIQUE: Routes chat non disponibles:', error.message);
+  console.log('Stack:', error.stack);
 }
 
 const app = express();
@@ -254,7 +256,7 @@ app.get('/', (req, res) => {
         ] : []),
         // Chat
         ...(chatService ? [
-          'authenticate',
+          'chat_authenticate',
           'join_conversation',
           'leave_conversation',
           'send_message',
@@ -332,10 +334,44 @@ try {
   console.log('⚠️ Routes requests non disponibles:', error.message);
 }
 
-// Routes chat (seulement si disponible)
+// CORRECTION CRITIQUE: Routes chat OBLIGATOIRES avec gestion d'erreur détaillée
 if (chatRoutes) {
-  app.use('/api/chat', chatRoutes);
-  console.log('✅ Routes chat montées sur /api/chat');
+  try {
+    app.use('/api/chat', chatRoutes);
+    console.log('✅ Routes chat montées sur /api/chat avec succès');
+    
+    // Test immédiat des routes
+    console.log('🧪 Test des routes chat disponibles:');
+    console.log('   - POST /api/chat/conversations');
+    console.log('   - GET  /api/chat/conversations');
+    console.log('   - GET  /api/chat/stats');
+    
+  } catch (error) {
+    console.error('❌ ERREUR CRITIQUE lors du montage des routes chat:', error);
+    console.error('Stack trace:', error.stack);
+    
+    // Routes de fallback pour éviter 404
+    app.use('/api/chat/*', (req, res) => {
+      res.status(503).json({
+        success: false,
+        message: 'Service de chat temporairement indisponible',
+        error: 'CHAT_SERVICE_ERROR',
+        details: 'Les routes de chat n\'ont pas pu être initialisées correctement'
+      });
+    });
+  }
+} else {
+  console.log('⚠️ Routes chat non disponibles - création de routes de fallback');
+  
+  // Routes de fallback si chatRoutes n'est pas disponible
+  app.use('/api/chat/*', (req, res) => {
+    res.status(503).json({
+      success: false,
+      message: 'Service de chat non disponible',
+      error: 'CHAT_ROUTES_NOT_LOADED',
+      details: 'Le module des routes chat n\'a pas pu être chargé'
+    });
+  });
 }
 
 // Routes notifications (seulement si disponible)
@@ -344,7 +380,7 @@ if (notificationRoutes) {
   console.log('✅ Routes notifications montées sur /api/notifications');
 }
 
-// Route 404
+// Route 404 améliorée
 app.use('*', (req, res) => {
   const availableEndpoints = [
     'GET /',
@@ -355,7 +391,7 @@ app.use('*', (req, res) => {
     'POST /api/requests/:id/approve-profile (admin only)'
   ];
 
-  if (chatRoutes) {
+  if (chatRoutes || chatService) {
     availableEndpoints.push('GET /api/chat/conversations (authenticated)');
     availableEndpoints.push('POST /api/chat/conversations (client only)');
   }
@@ -364,10 +400,21 @@ app.use('*', (req, res) => {
     availableEndpoints.push('WebSocket /socket.io/ (temps réel)');
   }
 
+  // Log détaillé pour débugger
+  console.log(`❌ Route 404: ${req.method} ${req.originalUrl}`);
+  console.log(`   - User Agent: ${req.get('User-Agent')}`);
+  console.log(`   - Origin: ${req.get('Origin')}`);
+  
   res.status(404).json({
     success: false,
     message: `Route non trouvée: ${req.method} ${req.originalUrl}`,
-    availableEndpoints
+    availableEndpoints,
+    debug: {
+      method: req.method,
+      path: req.originalUrl,
+      chatRoutesLoaded: !!chatRoutes,
+      chatServiceLoaded: !!chatService
+    }
   });
 });
 
@@ -415,6 +462,8 @@ async function startServer() {
       console.log(`🗄️  Base: ${process.env.DB_NAME}`);
       console.log(`🔔 Notifications temps réel: ${notificationService ? 'ACTIVÉES' : 'DÉSACTIVÉES'}`);
       console.log(`💬 Chat temps réel: ${chatService ? 'ACTIVÉ' : 'DÉSACTIVÉ'}`);
+      console.log(`🛣️  Routes chat: ${chatRoutes ? 'CHARGÉES' : 'NON CHARGÉES'}`);
+      
       if (notificationService || chatService) {
         console.log(`📡 WebSocket endpoint: ws://localhost:${PORT}/socket.io/`);
       }
@@ -427,10 +476,15 @@ async function startServer() {
       console.log('- POST /api/auth/login/client');
       console.log('- GET  /api/requests (demandes admin)');
       console.log('- POST /api/requests/:id/approve-profile (approbation)');
-      if (chatService) {
-        console.log('- GET  /api/chat/conversations (conversations chat)');
-        console.log('- POST /api/chat/conversations (créer conversation)');
+      
+      if (chatRoutes) {
+        console.log('- ✅ GET  /api/chat/conversations (conversations chat)');
+        console.log('- ✅ POST /api/chat/conversations (créer conversation)');
+        console.log('- ✅ GET  /api/chat/stats (statistiques chat)');
+      } else {
+        console.log('- ❌ Routes chat NON DISPONIBLES');
       }
+      
       if (notificationService || chatService) {
         console.log('- WebSocket /socket.io/ (temps réel)');
       }
@@ -440,7 +494,8 @@ async function startServer() {
       console.log(`- Base de données: ✅`);
       console.log(`- WebSocket: ${(notificationService || chatService) ? '✅' : '❌'}`);
       console.log(`- Notifications: ${notificationRoutes ? '✅' : '❌'}`);
-      console.log(`- Chat: ${chatService ? '✅' : '❌'}`);
+      console.log(`- Chat Service: ${chatService ? '✅' : '❌'}`);
+      console.log(`- Chat Routes: ${chatRoutes ? '✅' : '❌'}`);
       console.log(`- Requests Admin: ✅`);
       console.log('================================\n');
       
@@ -449,9 +504,14 @@ async function startServer() {
       console.log('   API Info: http://localhost:5000');
       console.log('   Santé: http://localhost:5000/api/health');
       console.log('   Demandes Admin: GET http://localhost:5000/api/requests (avec token admin)');
-      if (chatService) {
-        console.log('   Chat API: GET http://localhost:5000/api/chat/conversations (avec token)');
+      
+      if (chatRoutes) {
+        console.log('   ✅ Chat API: GET http://localhost:5000/api/chat/conversations (avec token)');
+        console.log('   ✅ Créer conversation: POST http://localhost:5000/api/chat/conversations (avec token client)');
+      } else {
+        console.log('   ❌ Chat API: Routes non disponibles');
       }
+      
       console.log('✨ Prêt pour les connexions !\n');
     });
     

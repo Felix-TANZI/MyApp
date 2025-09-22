@@ -19,153 +19,185 @@ const useChat = (user, userType) => {
   const typingTimeoutRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
 
+  // CORRECTION: Fonction pour obtenir le token et les headers d'auth
+  const getAuthHeaders = useCallback(() => {
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      throw new Error('Token d\'accès non trouvé');
+    }
+    
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    };
+  }, []);
+
   // Initialisation du socket
   const initializeSocket = useCallback(() => {
     if (!user || socketRef.current?.connected) return;
 
     console.log('🔌 Initialisation du socket chat...');
 
-    // CORRECTION : Se connecter au namespace principal, pas à "/chat"
-    socketRef.current = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'],
-      autoConnect: false,
-      reconnection: true,
-      reconnectionDelay: 2000,
-      reconnectionDelayMax: 10000,
-      maxReconnectionAttempts: 5
-    });
-
-    const socket = socketRef.current;
-
-    // Événements de connexion
-    socket.on('connect', () => {
-      console.log('✅ Chat connecté:', socket.id);
-      setIsConnected(true);
-      setError(null);
-      reconnectAttemptsRef.current = 0;
-
-      // Authentification avec un événement spécifique au chat
-      const token = localStorage.getItem('accessToken');
-      socket.emit('chat_authenticate', { token, userType });
-    });
-
-    socket.on('disconnect', (reason) => {
-      console.log('❌ Chat déconnecté:', reason);
-      setIsConnected(false);
-      setParticipants([]);
-      setTypingUsers([]);
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('Erreur connexion chat:', error);
-      setError('Erreur de connexion au chat');
-      setIsConnected(false);
-      
-      reconnectAttemptsRef.current++;
-      if (reconnectAttemptsRef.current >= 5) {
-        setError('Impossible de se connecter au chat. Vérifiez votre connexion.');
-      }
-    });
-
-    // Événements d'authentification
-    socket.on('chat_authenticated', (data) => {
-      console.log('🔐 Chat authentifié:', data);
-      setError(null);
-    });
-
-    socket.on('chat_auth_error', (error) => {
-      console.error('Erreur auth chat:', error);
-      setError('Erreur d\'authentification du chat');
-      setIsConnected(false);
-    });
-
-    // Événements de conversation
-    socket.on('conversation_joined', (data) => {
-      console.log('🏠 Conversation rejointe:', data);
-      setParticipants(data.onlineParticipants || []);
-    });
-
-    socket.on('user_joined', (data) => {
-      console.log('👤 Utilisateur rejoint:', data);
-      setParticipants(prev => {
-        const exists = prev.find(p => p.user_id === data.userId && p.user_type === data.userType);
-        if (exists) return prev;
-        return [...prev, {
-          user_id: data.userId,
-          user_type: data.userType,
-          nom: data.userInfo.nom,
-          prenom: data.userInfo.prenom,
-          role: data.userInfo.role || 'Client',
-          en_ligne: true
-        }];
+    try {
+      // Se connecter au namespace principal
+      socketRef.current = io(SOCKET_URL, {
+        transports: ['websocket', 'polling'],
+        autoConnect: false,
+        reconnection: true,
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: 10000,
+        maxReconnectionAttempts: 5
       });
-    });
 
-    socket.on('user_left', (data) => {
-      console.log('👋 Utilisateur parti:', data);
-      setParticipants(prev => 
-        prev.map(p => 
-          p.user_id === data.userId && p.user_type === data.userType 
-            ? { ...p, en_ligne: false }
-            : p
-        )
-      );
-    });
+      const socket = socketRef.current;
 
-    // Événements de messages
-    socket.on('new_message', (messageData) => {
-      console.log('💬 Nouveau message:', messageData);
-      setMessages(prev => [...prev, messageData]);
-      
-      // Mettre à jour la conversation si c'est la conversation courante
-      if (currentConversation && messageData.conversation_id === currentConversation.id) {
-        setCurrentConversation(prev => ({
-          ...prev,
-          dernier_message: messageData.message,
-          date_dernier_message: messageData.date_creation
-        }));
-      }
-      
-      // Mettre à jour la liste des conversations
-      setConversations(prev => prev.map(conv => 
-        conv.id === messageData.conversation_id 
-          ? {
-              ...conv,
-              dernier_message: messageData.message,
-              date_dernier_message: messageData.date_creation,
-              derniere_activite: messageData.date_creation
-            }
-          : conv
-      ));
-    });
+      // Événements de connexion
+      socket.on('connect', () => {
+        console.log('✅ Chat connecté:', socket.id);
+        setIsConnected(true);
+        setError(null);
+        reconnectAttemptsRef.current = 0;
 
-    socket.on('messages_read', (data) => {
-      console.log('✅ Messages lus:', data);
-    });
+        // CORRECTION: Authentification avec token et type d'utilisateur correct
+        const token = localStorage.getItem('accessToken');
+        if (token) {
+          // Déterminer le type d'utilisateur correct
+          const actualUserType = userType === 'user' ? 'user' : 'client';
+          
+          socket.emit('chat_authenticate', { 
+            token, 
+            userType: actualUserType 
+          });
+          
+          console.log('🔐 Authentification envoyée:', { userType: actualUserType, hasToken: !!token });
+        } else {
+          console.error('❌ Aucun token disponible pour l\'authentification');
+          setError('Token d\'authentification manquant');
+        }
+      });
 
-    // Événements de frappe
-    socket.on('user_typing', (data) => {
-      if (data.isTyping) {
-        setTypingUsers(prev => {
-          const exists = prev.find(u => u.userId === data.userId && u.userType === data.userType);
+      socket.on('disconnect', (reason) => {
+        console.log('❌ Chat déconnecté:', reason);
+        setIsConnected(false);
+        setParticipants([]);
+        setTypingUsers([]);
+      });
+
+      socket.on('connect_error', (error) => {
+        console.error('Erreur connexion chat:', error);
+        setError('Erreur de connexion au chat');
+        setIsConnected(false);
+        
+        reconnectAttemptsRef.current++;
+        if (reconnectAttemptsRef.current >= 5) {
+          setError('Impossible de se connecter au chat. Vérifiez votre connexion.');
+        }
+      });
+
+      // Événements d'authentification
+      socket.on('chat_authenticated', (data) => {
+        console.log('🔐 Chat authentifié:', data);
+        setError(null);
+      });
+
+      socket.on('chat_auth_error', (error) => {
+        console.error('Erreur auth chat:', error);
+        setError(`Erreur d'authentification: ${error.message || 'Token invalide'}`);
+        setIsConnected(false);
+      });
+
+      // Événements de conversation
+      socket.on('conversation_joined', (data) => {
+        console.log('🏠 Conversation rejointe:', data);
+        setParticipants(data.onlineParticipants || []);
+      });
+
+      socket.on('user_joined', (data) => {
+        console.log('👤 Utilisateur rejoint:', data);
+        setParticipants(prev => {
+          const exists = prev.find(p => p.user_id === data.userId && p.user_type === data.userType);
           if (exists) return prev;
-          return [...prev, data];
+          return [...prev, {
+            user_id: data.userId,
+            user_type: data.userType,
+            nom: data.userInfo.nom,
+            prenom: data.userInfo.prenom,
+            role: data.userInfo.role || 'Client',
+            en_ligne: true
+          }];
         });
-      } else {
-        setTypingUsers(prev => 
-          prev.filter(u => !(u.userId === data.userId && u.userType === data.userType))
+      });
+
+      socket.on('user_left', (data) => {
+        console.log('👋 Utilisateur parti:', data);
+        setParticipants(prev => 
+          prev.map(p => 
+            p.user_id === data.userId && p.user_type === data.userType 
+              ? { ...p, en_ligne: false }
+              : p
+          )
         );
-      }
-    });
+      });
 
-    // Événements d'erreur
-    socket.on('error', (error) => {
-      console.error('Erreur chat:', error);
-      setError(error.message);
-    });
+      // Événements de messages
+      socket.on('new_message', (messageData) => {
+        console.log('💬 Nouveau message:', messageData);
+        setMessages(prev => [...prev, messageData]);
+        
+        // Mettre à jour la conversation si c'est la conversation courante
+        if (currentConversation && messageData.conversation_id === currentConversation.id) {
+          setCurrentConversation(prev => ({
+            ...prev,
+            dernier_message: messageData.message,
+            date_dernier_message: messageData.date_creation
+          }));
+        }
+        
+        // Mettre à jour la liste des conversations
+        setConversations(prev => prev.map(conv => 
+          conv.id === messageData.conversation_id 
+            ? {
+                ...conv,
+                dernier_message: messageData.message,
+                date_dernier_message: messageData.date_creation,
+                derniere_activite: messageData.date_creation
+              }
+            : conv
+        ));
+      });
 
-    // Connecter le socket
-    socket.connect();
+      socket.on('messages_read', (data) => {
+        console.log('✅ Messages lus:', data);
+      });
+
+      // Événements de frappe
+      socket.on('user_typing', (data) => {
+        if (data.isTyping) {
+          setTypingUsers(prev => {
+            const exists = prev.find(u => u.userId === data.userId && u.userType === data.userType);
+            if (exists) return prev;
+            return [...prev, data];
+          });
+        } else {
+          setTypingUsers(prev => 
+            prev.filter(u => !(u.userId === data.userId && u.userType === data.userType))
+          );
+        }
+      });
+
+      // Événements d'erreur
+      socket.on('error', (error) => {
+        console.error('Erreur chat:', error);
+        setError(error.message);
+      });
+
+      // Connecter le socket
+      socket.connect();
+
+    } catch (error) {
+      console.error('Erreur initialisation socket:', error);
+      setError('Erreur lors de l\'initialisation du chat');
+    }
 
   }, [user, userType, currentConversation]);
 
@@ -188,10 +220,12 @@ const useChat = (user, userType) => {
     setTypingUsers([]);
   }, []);
 
-  // Charger les conversations
+  // CORRECTION: Charger les conversations avec gestion d'erreur améliorée
   const loadConversations = useCallback(async (page = 1, search = '', status = '') => {
     try {
       setLoading(true);
+      setError(null);
+      
       const params = new URLSearchParams({
         page: page.toString(),
         limit: '20',
@@ -199,19 +233,36 @@ const useChat = (user, userType) => {
         statut: status
       });
 
+      const headers = getAuthHeaders();
+      
+      console.log('📡 Chargement conversations:', `GET /api/chat/conversations?${params}`);
+
       const response = await fetch(`http://localhost:5000/api/chat/conversations?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       });
 
+      console.log('📡 Réponse conversations:', response.status, response.statusText);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erreur lors du chargement des conversations');
+        let errorMessage = `Erreur HTTP ${response.status}`;
+        
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+          console.error('Erreur API conversations:', errorData);
+        } catch (parseError) {
+          console.error('Erreur parsing réponse:', parseError);
+          if (response.status === 404) {
+            errorMessage = 'Route non trouvée - Le service de chat n\'est peut-être pas disponible';
+          }
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
+      console.log('✅ Conversations chargées:', data.data?.conversations?.length || 0);
+      
       if (page === 1) {
         setConversations(data.data.conversations);
       } else {
@@ -232,27 +283,45 @@ const useChat = (user, userType) => {
     } finally {
       setLoading(false);
     }
-  }, [userType]);
+  }, [userType, getAuthHeaders]);
 
-  // Créer une nouvelle conversation (client uniquement)
+  // CORRECTION: Créer une nouvelle conversation avec gestion d'erreur améliorée
   const createConversation = useCallback(async (sujet = 'Support général') => {
     try {
       setLoading(true);
+      setError(null);
+      
+      const headers = getAuthHeaders();
+      
+      console.log('📡 Création conversation:', 'POST /api/chat/conversations');
+
       const response = await fetch('http://localhost:5000/api/chat/conversations', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-          'Content-Type': 'application/json'
-        },
+        headers,
         body: JSON.stringify({ sujet })
       });
 
+      console.log('📡 Réponse création conversation:', response.status, response.statusText);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erreur lors de la création de la conversation');
+        let errorMessage = `Erreur HTTP ${response.status}`;
+        
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+          console.error('Erreur API création conversation:', errorData);
+        } catch (parseError) {
+          if (response.status === 404) {
+            errorMessage = 'Service de chat non disponible';
+          }
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
+      console.log('✅ Conversation créée:', data);
+      
       if (data.success) {
         // Recharger les conversations
         await loadConversations();
@@ -266,19 +335,18 @@ const useChat = (user, userType) => {
     } finally {
       setLoading(false);
     }
-  }, [loadConversations]);
+  }, [loadConversations, getAuthHeaders]);
 
   // Rejoindre une conversation
   const joinConversation = useCallback(async (conversationId) => {
     try {
       setLoading(true);
       
+      const headers = getAuthHeaders();
+      
       // Charger les détails de la conversation
       const response = await fetch(`http://localhost:5000/api/chat/conversations/${conversationId}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       });
 
       if (!response.ok) throw new Error('Conversation introuvable');
@@ -321,11 +389,10 @@ const useChat = (user, userType) => {
   // Charger les messages d'une conversation
   const loadMessages = useCallback(async (conversationId, page = 1) => {
     try {
+      const headers = getAuthHeaders();
+      
       const response = await fetch(`http://localhost:5000/api/chat/conversations/${conversationId}/messages?page=${page}&limit=50`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       });
 
       if (!response.ok) throw new Error('Erreur lors du chargement des messages');
@@ -343,7 +410,7 @@ const useChat = (user, userType) => {
       setError(error.message);
       return null;
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   // Envoyer un message
   const sendMessage = useCallback((message, type = 'text') => {
@@ -401,12 +468,11 @@ const useChat = (user, userType) => {
   // Fermer une conversation (professionnels uniquement)
   const closeConversation = useCallback(async (conversationId) => {
     try {
+      const headers = getAuthHeaders();
+      
       const response = await fetch(`http://localhost:5000/api/chat/conversations/${conversationId}/close`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       });
 
       if (!response.ok) throw new Error('Erreur lors de la fermeture');
@@ -428,17 +494,16 @@ const useChat = (user, userType) => {
       setError(error.message);
       return false;
     }
-  }, [loadConversations, currentConversation, leaveConversation]);
+  }, [loadConversations, currentConversation, leaveConversation, getAuthHeaders]);
 
   // Rouvrir une conversation (professionnels uniquement)
   const reopenConversation = useCallback(async (conversationId) => {
     try {
+      const headers = getAuthHeaders();
+      
       const response = await fetch(`http://localhost:5000/api/chat/conversations/${conversationId}/reopen`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       });
 
       if (!response.ok) throw new Error('Erreur lors de la réouverture');
@@ -454,16 +519,15 @@ const useChat = (user, userType) => {
       setError(error.message);
       return false;
     }
-  }, [loadConversations]);
+  }, [loadConversations, getAuthHeaders]);
 
   // Charger les statistiques (professionnels uniquement)
   const loadChatStats = useCallback(async () => {
     try {
+      const headers = getAuthHeaders();
+      
       const response = await fetch('http://localhost:5000/api/chat/stats', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       });
 
       if (!response.ok) throw new Error('Erreur lors du chargement des statistiques');
@@ -475,7 +539,7 @@ const useChat = (user, userType) => {
       setError(error.message);
       return null;
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   // Effacer les erreurs
   const clearError = useCallback(() => {
