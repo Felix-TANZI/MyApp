@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ClientsModule from './ClientsModule';
 import InvoicesModule from './InvoicesModule';
 import UsersModule from './UsersModule';
+import AdminRequestsModule from './AdminRequestsModule';
 import NotificationBadge from './NotificationBadge';
 import NotificationPanel from './NotificationPanel';
 import './DashboardProfessional.css';
@@ -12,6 +13,11 @@ const DashboardProfessional = () => {
   const [currentModule, setCurrentModule] = useState('overview');
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [showNotificationPanel, setShowNotificationPanel] = useState(false);
+  const [requestsStats, setRequestsStats] = useState({
+    total_demandes: 0,
+    demandes_profil: 0,
+    demandes_mot_de_passe: 0
+  });
 
   // Destructurer les fonctions et état des notifications
   const {
@@ -26,7 +32,45 @@ const DashboardProfessional = () => {
     loadNotifications
   } = notifications;
 
-  // Modules disponibles selon le rôle
+  // Charger les statistiques des demandes admin
+  const loadRequestsStats = useCallback(async () => {
+    if (!user || (user.role !== 'admin' && user.role !== 'commercial' && user.role !== 'comptable')) {
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:5000/api/requests/stats', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setRequestsStats(data.data.global || { 
+            total_demandes: 0,
+            demandes_profil: 0,
+            demandes_mot_de_passe: 0
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Erreur chargement stats demandes:', error);
+    }
+  }, [user]);
+
+  // Effet pour charger les stats des demandes
+  useEffect(() => {
+    loadRequestsStats();
+    
+    // Recharger toutes les 30 secondes
+    const interval = setInterval(loadRequestsStats, 30000);
+    return () => clearInterval(interval);
+  }, [loadRequestsStats]);
+
+  // Modules disponibles selon le rôle avec badge notifications
   const modules = [
     {
       id: 'overview',
@@ -53,11 +97,20 @@ const DashboardProfessional = () => {
       roles: ['admin', 'commercial', 'comptable']
     },
     {
+      id: 'requests',
+      name: 'Demandes',
+      icon: '📝',
+      description: 'Demandes clients en attente',
+      color: 'from-orange-500 to-orange-600',
+      roles: ['admin', 'commercial', 'comptable'], // Accessible selon created_by
+      badge: requestsStats.total_demandes || 0
+    },
+    {
       id: 'payments',
       name: 'Paiements',
       icon: '💳',
       description: 'Suivi des paiements',
-      color: 'from-orange-500 to-orange-600',
+      color: 'from-indigo-500 to-indigo-600',
       roles: ['admin', 'commercial', 'comptable']
     },
     {
@@ -102,11 +155,13 @@ const DashboardProfessional = () => {
   const renderModuleContent = () => {
     switch(currentModule) {
       case 'overview':
-        return <OverviewModule user={user} onNavigate={setCurrentModule} notifications={notifications} />;
+        return <OverviewModule user={user} onNavigate={setCurrentModule} notifications={notifications} requestsStats={requestsStats} />;
       case 'clients':
         return <ClientsModule user={user} />;
       case 'invoices':
         return <InvoicesModule user={user} />;
+      case 'requests':
+        return <AdminRequestsModule user={user} />;
       case 'payments':
         return <PaymentsModule user={user} />;
       case 'users':
@@ -114,7 +169,7 @@ const DashboardProfessional = () => {
       case 'system':
         return <SystemModule user={user} />;
       default:
-        return <OverviewModule user={user} onNavigate={setCurrentModule} notifications={notifications} />;
+        return <OverviewModule user={user} onNavigate={setCurrentModule} notifications={notifications} requestsStats={requestsStats} />;
     }
   };
 
@@ -166,6 +221,12 @@ const DashboardProfessional = () => {
                 <div className="nav-content">
                   <span className="nav-name">{module.name}</span>
                   <span className="nav-description">{module.description}</span>
+                </div>
+              )}
+              {/* Badge de notification pour les demandes */}
+              {module.id === 'requests' && module.badge > 0 && (
+                <div className="nav-badge">
+                  <span className="badge-count">{module.badge}</span>
                 </div>
               )}
               {currentModule === module.id && <div className="nav-indicator" />}
@@ -248,8 +309,8 @@ const DashboardProfessional = () => {
   );
 };
 
-// Module Vue d'ensemble avec statistiques de notifications
-const OverviewModule = ({ user, onNavigate, notifications }) => {
+// Module Vue d'ensemble avec statistiques de notifications et demandes
+const OverviewModule = ({ user, onNavigate, notifications, requestsStats }) => {
   const [stats, setStats] = useState({
     totalClients: 0,
     totalFactures: 0,
@@ -259,14 +320,17 @@ const OverviewModule = ({ user, onNavigate, notifications }) => {
   });
 
   const [recentActivity, setRecentActivity] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchStats();
     fetchRecentActivity();
-  }, []);
+  }, [notifications]);
 
   const fetchStats = async () => {
     try {
+      setLoading(true);
+      
       // Récupération des stats des clients
       const clientsResponse = await fetch('http://localhost:5000/api/clients/stats', {
         headers: {
@@ -321,10 +385,12 @@ const OverviewModule = ({ user, onNavigate, notifications }) => {
 
     } catch (error) {
       console.error('Erreur récupération stats:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const fetchRecentActivity = async () => {
+  const fetchRecentActivity = () => {
     // Utiliser les notifications récentes comme activité
     const recentNotifications = notifications.notifications?.slice(0, 5) || [];
     const activity = recentNotifications.map(notif => ({
@@ -343,7 +409,11 @@ const OverviewModule = ({ user, onNavigate, notifications }) => {
       'facture_nouvelle': '📄',
       'paiement_recu': '💰',
       'client_nouveau': '👥',
-      'demande_client': '📝'
+      'demande_client': '📝',
+      'modification_approuvee': '✅',
+      'modification_rejetee': '❌',
+      'mot_de_passe_approuve': '🔐',
+      'system': '⚙️'
     };
     return icons[type] || '🔔';
   };
@@ -386,6 +456,15 @@ const OverviewModule = ({ user, onNavigate, notifications }) => {
       roles: ['admin', 'commercial', 'comptable']
     },
     {
+      id: 'view-requests',
+      name: 'Voir les demandes',
+      icon: '📝',
+      action: () => onNavigate('requests'),
+      color: 'orange',
+      roles: ['admin', 'commercial', 'comptable'],
+      badge: requestsStats.total_demandes || 0
+    },
+    {
       id: 'record-payment',
       name: 'Enregistrer un paiement',
       icon: '💳',
@@ -405,8 +484,8 @@ const OverviewModule = ({ user, onNavigate, notifications }) => {
       id: 'view-reports',
       name: 'Voir les rapports',
       icon: '📊',
-      action: () => console.log('Rapports'),
-      color: 'orange',
+      action: () => console.log('Rapports à venir'),
+      color: 'indigo',
       roles: ['admin', 'commercial', 'comptable']
     }
   ];
@@ -415,6 +494,15 @@ const OverviewModule = ({ user, onNavigate, notifications }) => {
   const availableActions = quickActions.filter(action => 
     action.roles.includes(user?.role)
   );
+
+  if (loading && (!stats.totalClients && !stats.totalFactures)) {
+    return (
+      <div className="overview-loading">
+        <div className="loading-spinner"></div>
+        <p>Chargement du tableau de bord...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="overview-module">
@@ -444,8 +532,22 @@ const OverviewModule = ({ user, onNavigate, notifications }) => {
           </div>
         </div>
 
-        {/* Carte notifications */}
+        {/* Carte demandes clients */}
         <div className="stat-card orange">
+          <div className="stat-icon">📝</div>
+          <div className="stat-content">
+            <h3 className="stat-value">{requestsStats.total_demandes || 0}</h3>
+            <p className="stat-label">Demandes en attente</p>
+          </div>
+          {requestsStats.total_demandes > 0 && (
+            <div className="stat-badge">
+              <span className="badge-urgent">Urgent</span>
+            </div>
+          )}
+        </div>
+
+        {/* Carte notifications */}
+        <div className="stat-card blue">
           <div className="stat-icon">🔔</div>
           <div className="stat-content">
             <h3 className="stat-value">{notifications.unreadCount || 0}</h3>
@@ -483,6 +585,11 @@ const OverviewModule = ({ user, onNavigate, notifications }) => {
             >
               <span className="action-icon">{action.icon}</span>
               <span>{action.name}</span>
+              {action.badge > 0 && (
+                <div className="action-badge">
+                  {action.badge}
+                </div>
+              )}
             </button>
           ))}
         </div>
@@ -509,6 +616,31 @@ const OverviewModule = ({ user, onNavigate, notifications }) => {
           )}
         </div>
       </div>
+
+      {/* Section statistiques détaillées des demandes si admin */}
+      {user?.role === 'admin' && requestsStats.total_demandes > 0 && (
+        <div className="requests-summary">
+          <h2>Résumé des demandes</h2>
+          <div className="requests-breakdown">
+            <div className="breakdown-item">
+              <span className="breakdown-icon">👤</span>
+              <span className="breakdown-label">Modifications profil</span>
+              <span className="breakdown-value">{requestsStats.demandes_profil || 0}</span>
+            </div>
+            <div className="breakdown-item">
+              <span className="breakdown-icon">🔐</span>
+              <span className="breakdown-label">Changements mot de passe</span>
+              <span className="breakdown-value">{requestsStats.demandes_mot_de_passe || 0}</span>
+            </div>
+          </div>
+          <button 
+            className="view-all-requests-btn"
+            onClick={() => onNavigate('requests')}
+          >
+            Voir toutes les demandes →
+          </button>
+        </div>
+      )}
     </div>
   );
 };

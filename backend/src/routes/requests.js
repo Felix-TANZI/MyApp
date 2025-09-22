@@ -9,7 +9,8 @@ const {
   rejectProfileUpdate,
   approvePasswordChange,
   rejectPasswordChange,
-  getRequestsStats
+  getRequestsStats,
+  getRequestById
 } = require('../controllers/adminRequestsController');
 
 const router = express.Router();
@@ -24,19 +25,51 @@ const adminLimiter = rateLimit({
   }
 });
 
-// Middlewares
+// Middleware pour vérifier les permissions spéciales pour les demandes
+const requireRequestAccess = async (req, res, next) => {
+  try {
+    const user = req.user;
+    
+    // Les admins ont toujours accès
+    if (user.role === 'admin') {
+      return next();
+    }
+    
+    // Les autres rôles peuvent voir les demandes des clients qu'ils ont créés
+    if (['commercial', 'comptable'].includes(user.role)) {
+      return next();
+    }
+    
+    // Accès refusé pour les autres rôles
+    return res.status(403).json({
+      success: false,
+      message: 'Accès non autorisé à la gestion des demandes'
+    });
+  } catch (error) {
+    console.error('Erreur vérification permissions demandes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur de vérification des permissions'
+    });
+  }
+};
+
+// Middlewares globaux pour toutes les routes
 router.use(verifyAuth);
 router.use(requireAuth);
-router.use(requireAdmin); // middleware admin qui vérifie le rôle
+router.use(requireRequestAccess); // Permissions spéciales pour les demandes
 router.use(adminLimiter);
 
-//  ROUTES GESTION DES DEMANDES 
+// ROUTES GESTION DES DEMANDES
 
-// GET /api/requests - Liste des demandes en attente
+// GET /api/requests - Liste des demandes en attente avec permissions
 router.get('/', getPendingRequests);
 
-// GET /api/requests/stats - Statistiques des demandes
+// GET /api/requests/stats - Statistiques des demandes avec permissions
 router.get('/stats', getRequestsStats);
+
+// GET /api/requests/:id - Détail d'une demande spécifique
+router.get('/:id', getRequestById);
 
 // POST /api/requests/:id/approve-profile - Approuver modification profil
 router.post('/:id/approve-profile', approveProfileUpdate);

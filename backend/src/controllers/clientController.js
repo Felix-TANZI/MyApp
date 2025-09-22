@@ -309,6 +309,22 @@ const requestProfileUpdate = async (req, res) => {
       pays: pays || 'Cameroun'
     };
 
+    // Récupérer les infos client pour la notification
+    const clientInfo = await query(`
+      SELECT nom, prenom, code_client, entreprise, created_by 
+      FROM clients 
+      WHERE id = ?
+    `, [clientId]);
+
+    if (clientInfo.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client introuvable'
+      });
+    }
+
+    const client = clientInfo[0];
+
     // Sauvegarder la demande
     await query(`
       UPDATE clients SET 
@@ -316,6 +332,58 @@ const requestProfileUpdate = async (req, res) => {
         modification_demandee_le = NOW()
       WHERE id = ?
     `, [JSON.stringify(nouvellesDonnees), clientId]);
+
+    // 🆕 NOTIFICATION WEBSOCKET TEMPS RÉEL POUR LES ADMINS
+    try {
+      // Récupérer tous les admins + créateur du client
+      let adminIds = [];
+      
+      // Récupérer tous les admins
+      const admins = await query(
+        'SELECT id FROM users WHERE role = "admin" AND statut = "actif"'
+      );
+      adminIds = admins.map(admin => admin.id);
+      
+      // Ajouter le créateur du client s'il existe et n'est pas déjà admin
+      if (client.created_by && !adminIds.includes(client.created_by)) {
+        const creator = await query(
+          'SELECT id, role FROM users WHERE id = ? AND statut = "actif"',
+          [client.created_by]
+        );
+        if (creator.length > 0) {
+          adminIds.push(client.created_by);
+        }
+      }
+
+      // Préparer le message de notification
+      const clientDisplayName = client.entreprise || `${client.nom} ${client.prenom}`;
+      const notificationData = {
+        type: 'demande_client',
+        titre: 'Nouvelle demande de modification de profil',
+        message: `${clientDisplayName} (${client.code_client}) souhaite modifier ses informations de profil.`,
+        data: {
+          client_id: clientId,
+          client_name: clientDisplayName,
+          client_code: client.code_client,
+          request_type: 'profile_update',
+          requested_changes: nouvellesDonnees
+        }
+      };
+
+      // Envoyer la notification à chaque admin via WebSocket
+      if (req.notificationService) {
+        for (const adminId of adminIds) {
+          await req.notificationService.createAndSendNotification('user', adminId, notificationData);
+          console.log(`🔔 Notification envoyée à l'admin ${adminId} pour demande profil client ${clientId}`);
+        }
+      } else {
+        console.log('⚠️ Service de notifications non disponible - demande profil non notifiée');
+      }
+
+    } catch (notifError) {
+      console.error('Erreur envoi notification demande profil:', notifError);
+      // Ne pas bloquer la demande si la notification échoue
+    }
 
     // Log de l'action
     await query(`
@@ -367,7 +435,7 @@ const requestPasswordChange = async (req, res) => {
 
     // Vérifier le mot de passe actuel
     const clients = await query(
-      'SELECT mot_de_passe, nouveau_mot_de_passe_attente FROM clients WHERE id = ?',
+      'SELECT mot_de_passe, nouveau_mot_de_passe_attente, nom, prenom, code_client, entreprise, created_by FROM clients WHERE id = ?',
       [clientId]
     );
 
@@ -408,6 +476,57 @@ const requestPasswordChange = async (req, res) => {
         mot_de_passe_demande_le = NOW()
       WHERE id = ?
     `, [hashedNewPassword, clientId]);
+
+    // 🆕 NOTIFICATION WEBSOCKET TEMPS RÉEL POUR LES ADMINS
+    try {
+      // Récupérer tous les admins + créateur du client
+      let adminIds = [];
+      
+      // Récupérer tous les admins
+      const admins = await query(
+        'SELECT id FROM users WHERE role = "admin" AND statut = "actif"'
+      );
+      adminIds = admins.map(admin => admin.id);
+      
+      // Ajouter le créateur du client s'il existe et n'est pas déjà admin
+      if (client.created_by && !adminIds.includes(client.created_by)) {
+        const creator = await query(
+          'SELECT id, role FROM users WHERE id = ? AND statut = "actif"',
+          [client.created_by]
+        );
+        if (creator.length > 0) {
+          adminIds.push(client.created_by);
+        }
+      }
+
+      // Préparer le message de notification
+      const clientDisplayName = client.entreprise || `${client.nom} ${client.prenom}`;
+      const notificationData = {
+        type: 'demande_client',
+        titre: 'Nouvelle demande de changement de mot de passe',
+        message: `${clientDisplayName} (${client.code_client}) souhaite modifier son mot de passe.`,
+        data: {
+          client_id: clientId,
+          client_name: clientDisplayName,
+          client_code: client.code_client,
+          request_type: 'password_change'
+        }
+      };
+
+      // Envoyer la notification à chaque admin via WebSocket
+      if (req.notificationService) {
+        for (const adminId of adminIds) {
+          await req.notificationService.createAndSendNotification('user', adminId, notificationData);
+          console.log(`🔔 Notification envoyée à l'admin ${adminId} pour demande mot de passe client ${clientId}`);
+        }
+      } else {
+        console.log('⚠️ Service de notifications non disponible - demande mot de passe non notifiée');
+      }
+
+    } catch (notifError) {
+      console.error('Erreur envoi notification demande mot de passe:', notifError);
+      // Ne pas bloquer la demande si la notification échoue
+    }
 
     // Log de l'action
     await query(`

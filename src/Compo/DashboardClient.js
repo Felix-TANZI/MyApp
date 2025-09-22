@@ -316,7 +316,7 @@ const DashboardClient = () => {
             <span className="contact-icon">📧</span>
             <div>
               <h4>Email</h4>
-              <p>support@amani-app.com</p>
+              <p>tanzifelix@gmail.com</p>
             </div>
           </div>
           <div className="contact-card">

@@ -167,6 +167,14 @@ app.get('/', (req, res) => {
       'PUT /api/invoices/:id',
       'DELETE /api/invoices/:id',
       
+      // Admin Requests endpoints (NOUVEAU)
+      'GET /api/requests',
+      'GET /api/requests/stats',
+      'POST /api/requests/:id/approve-profile',
+      'POST /api/requests/:id/reject-profile',
+      'POST /api/requests/:id/approve-password',
+      'POST /api/requests/:id/reject-password',
+      
       // Notifications endpoints (si disponible)
       ...(notificationRoutes ? [
         'GET /api/notifications',
@@ -232,10 +240,10 @@ try {
   console.log('⚠️ Routes client non disponibles:', error.message);
 }
 
-// Routes admin pour les demandes (avec gestion d'erreur)
+// 🆕 ROUTES ADMIN POUR LES DEMANDES - CORRECTION IMPORTANTE
 try {
   app.use('/api/requests', require('./routes/requests'));
-  console.log('✅ Routes requests chargées');
+  console.log('✅ Routes requests chargées et montées sur /api/requests');
 } catch (error) {
   console.log('⚠️ Routes requests non disponibles:', error.message);
 }
@@ -256,6 +264,8 @@ app.use('*', (req, res) => {
       'GET /api/health',
       'POST /api/auth/login/professional',
       'POST /api/auth/login/client',
+      'GET /api/requests (admin only)',
+      'POST /api/requests/:id/approve-profile (admin only)',
       'WebSocket /socket.io/' + (notificationService ? ' (actif)' : ' (indisponible)')
     ]
   });
@@ -313,6 +323,8 @@ async function startServer() {
       console.log('- GET  /api/health (santé + stats notifications)');
       console.log('- POST /api/auth/login/professional');
       console.log('- POST /api/auth/login/client');
+      console.log('- GET  /api/requests (🆕 demandes admin)');
+      console.log('- POST /api/requests/:id/approve-profile (🆕 approbation)');
       if (notificationService) {
         console.log('- WebSocket /socket.io/ (notifications temps réel)');
       }
@@ -321,12 +333,14 @@ async function startServer() {
       console.log(`- Base de données: ✅`);
       console.log(`- WebSocket: ${notificationService ? '✅' : '❌'}`);
       console.log(`- Notifications: ${notificationRoutes ? '✅' : '❌'}`);
+      console.log(`- Requests Admin: ✅`);
       console.log('================================\n');
       
       console.log('🔐 Pour tester:');
       console.log('   Frontend: http://localhost:3000');
       console.log('   API Info: http://localhost:5000');
       console.log('   Santé: http://localhost:5000/api/health');
+      console.log('   Demandes Admin: GET http://localhost:5000/api/requests (avec token admin)');
       console.log('✨ Prêt pour les connexions !\n');
     });
     
