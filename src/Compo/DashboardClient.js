@@ -5,6 +5,7 @@ import ClientProfileModule from './Client/ClientProfileModule';
 import ClientNotificationsModule from './Client/ClientNotificationsModule';
 import NotificationBadge from './NotificationBadge';
 import NotificationPanel from './NotificationPanel';
+import ClientChatModule from './Client/ClientChatModule';
 import './DashboardClient.css';
 
 const DashboardClient = () => {
@@ -120,6 +121,8 @@ const DashboardClient = () => {
         return <ClientProfileModule onBack={() => setCurrentModule('dashboard')} />;
       case 'notifications':
         return <ClientNotificationsModule onBack={() => setCurrentModule('dashboard')} />;
+      case 'chat':
+        return <ClientChatModule onBack={() => setCurrentModule('dashboard')} />;  
       default:
         return renderDashboard();
     }
@@ -231,17 +234,17 @@ const DashboardClient = () => {
             {unreadCount > 0 && <div className="notification-badge">{unreadCount}</div>}
           </button>
 
-          <a 
-            href="mailto:tanzifelix@gmail.com"
-            className="quick-action-card contact-card"
+          <button 
+             className="quick-action-card"
+             onClick={() => setCurrentModule('chat')}  // MODIFIÉ : était 'mailto:tanzifelix@gmail.com'
           >
-            <div className="action-icon">📞</div>
-            <div className="action-content">
-              <h3>Support</h3>
-              <p>Contactez notre équipe</p>
-            </div>
-            <div className="action-arrow">↗</div>
-          </a>
+             <div className="action-icon">💬</div>  {/* MODIFIÉ : était 📞 */}
+             <div className="action-content">
+                 <h3>Chat Support</h3>  {/* MODIFIÉ : était "Support" */}
+                 <p>Contactez notre équipe en direct</p>  {/* MODIFIÉ */}
+             </div>
+             <div className="action-arrow">→</div>
+          </button>
         </div>
       </div>
 

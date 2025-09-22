@@ -6,6 +6,7 @@ import UsersModule from './UsersModule';
 import AdminRequestsModule from './AdminRequestsModule';
 import NotificationBadge from './NotificationBadge';
 import NotificationPanel from './NotificationPanel';
+import ProfessionalChatModule from './ProfessionalChatModule';
 import './DashboardProfessional.css';
 
 const DashboardProfessional = () => {
@@ -114,6 +115,14 @@ const DashboardProfessional = () => {
       roles: ['admin', 'commercial', 'comptable']
     },
     {
+    id: 'chat',
+    name: 'Chat Support',
+    icon: '💬',
+    description: 'Messages clients en temps réel',
+    color: 'from-emerald-500 to-emerald-600',
+    roles: ['admin', 'commercial', 'comptable']
+    },
+    {
       id: 'users', 
       name: 'Utilisateurs',
       icon: '⚙️',
@@ -166,6 +175,8 @@ const DashboardProfessional = () => {
         return <PaymentsModule user={user} />;
       case 'users':
         return <UsersModule user={user} />;
+      case 'chat':
+        return <ProfessionalChatModule user={user} onBack={() => setCurrentModule('overview')} />;  
       case 'system':
         return <SystemModule user={user} />;
       default:
@@ -438,6 +449,7 @@ const OverviewModule = ({ user, onNavigate, notifications, requestsStats }) => {
     }).format(amount);
   };
 
+  // Action rapide
   const quickActions = [
     {
       id: 'new-client',
@@ -454,6 +466,14 @@ const OverviewModule = ({ user, onNavigate, notifications, requestsStats }) => {
       action: () => onNavigate('invoices'),
       color: 'blue',
       roles: ['admin', 'commercial', 'comptable']
+    },
+    {
+    id: 'chat-support',
+    name: 'Chat Support',
+    icon: '💬',
+    action: () => onNavigate('chat'),
+    color: 'emerald',
+    roles: ['admin', 'commercial', 'comptable']
     },
     {
       id: 'view-requests',

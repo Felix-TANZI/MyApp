@@ -21,12 +21,12 @@ class ChatService {
       console.log(`Nouvelle connexion chat: ${socket.id}`);
 
       // Authentification du socket
-      socket.on('authenticate', async (data) => {
+      socket.on('chat_authenticate', async (data) => {
         try {
           await this.authenticateSocket(socket, data);
         } catch (error) {
           console.error('Erreur authentification socket chat:', error);
-          socket.emit('auth_error', { message: 'Authentification échouée' });
+          socket.emit('chat_auth_error', { message: 'Authentification échouée' });
           socket.disconnect();
         }
       });
@@ -87,7 +87,7 @@ class ChatService {
 
   // Authentifier un socket
   async authenticateSocket(socket, data) {
-    const { token } = data;
+    const { token, userType } = data;
     
     if (!token) {
       throw new Error('Token manquant');
@@ -95,14 +95,34 @@ class ChatService {
 
     // Vérifier le token JWT
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const { userId, userType } = decoded;
+    let userId, actualUserType;
+
+    // Gérer les différents types d'authentification
+    if (userType === 'client') {
+      userId = decoded.clientId || decoded.id;
+      actualUserType = 'client';
+    } else if (userType === 'user') {
+      userId = decoded.userId || decoded.id;
+      actualUserType = 'user';
+    } else {
+      // Auto-déterminer le type basé sur le token
+      if (decoded.clientId) {
+        userId = decoded.clientId;
+        actualUserType = 'client';
+      } else if (decoded.userId) {
+        userId = decoded.userId;
+        actualUserType = 'user';
+      } else {
+        throw new Error('Type d\'utilisateur indéterminé');
+      }
+    }
 
     // Récupérer les infos utilisateur
     let userInfo;
-    if (userType === 'user') {
+    if (actualUserType === 'user') {
       const users = await query('SELECT id, nom, prenom, role FROM users WHERE id = ?', [userId]);
       userInfo = users[0];
-    } else if (userType === 'client') {
+    } else if (actualUserType === 'client') {
       const clients = await query('SELECT id, nom, prenom, code_client FROM clients WHERE id = ?', [userId]);
       userInfo = clients[0];
     }
@@ -113,25 +133,25 @@ class ChatService {
 
     // Stocker les infos dans le socket
     socket.userId = userId;
-    socket.userType = userType;
+    socket.userType = actualUserType;
     socket.userInfo = userInfo;
 
     // Ajouter à la liste des connectés
     this.connectedUsers.set(userId, {
       socketId: socket.id,
-      userType,
+      userType: actualUserType,
       userInfo,
       connectedAt: new Date()
     });
 
     // Confirmer l'authentification
-    socket.emit('authenticated', {
+    socket.emit('chat_authenticated', {
       userId,
-      userType,
+      userType: actualUserType,
       userInfo
     });
 
-    console.log(`Chat authentifié: ${userType} ${userInfo.nom} (${socket.id})`);
+    console.log(`Chat authentifié: ${actualUserType} ${userInfo.nom} (${socket.id})`);
   }
 
   // Rejoindre une conversation
@@ -317,25 +337,30 @@ class ChatService {
 
   // Vérifier l'accès à une conversation
   async checkConversationAccess(conversationId, userId, userType) {
-    // Les clients ne peuvent accéder qu'à leurs conversations
-    if (userType === 'client') {
-      const conversations = await query(
-        'SELECT id FROM conversations WHERE id = ? AND client_id = ?',
-        [conversationId, userId]
-      );
-      return conversations.length > 0;
-    }
+    try {
+      // Les clients ne peuvent accéder qu'à leurs conversations
+      if (userType === 'client') {
+        const conversations = await query(
+          'SELECT id FROM conversations WHERE id = ? AND client_id = ?',
+          [conversationId, userId]
+        );
+        return conversations.length > 0;
+      }
 
-    // Les professionnels peuvent accéder à toutes les conversations
-    if (userType === 'user') {
-      const users = await query(
-        'SELECT role FROM users WHERE id = ? AND role IN (?, ?, ?)',
-        [userId, 'admin', 'commercial', 'comptable']
-      );
-      return users.length > 0;
-    }
+      // Les professionnels peuvent accéder à toutes les conversations
+      if (userType === 'user') {
+        const users = await query(
+          'SELECT role FROM users WHERE id = ? AND role IN (?, ?, ?)',
+          [userId, 'admin', 'commercial', 'comptable']
+        );
+        return users.length > 0;
+      }
 
-    return false;
+      return false;
+    } catch (error) {
+      console.error('Erreur vérification accès conversation:', error);
+      return false;
+    }
   }
 
   // Mettre à jour le statut d'un participant

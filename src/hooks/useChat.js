@@ -25,7 +25,8 @@ const useChat = (user, userType) => {
 
     console.log('🔌 Initialisation du socket chat...');
 
-    socketRef.current = io(`${SOCKET_URL}/chat`, {
+    // CORRECTION : Se connecter au namespace principal, pas à "/chat"
+    socketRef.current = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       autoConnect: false,
       reconnection: true,
@@ -43,9 +44,9 @@ const useChat = (user, userType) => {
       setError(null);
       reconnectAttemptsRef.current = 0;
 
-      // Authentification
+      // Authentification avec un événement spécifique au chat
       const token = localStorage.getItem('accessToken');
-      socket.emit('authenticate', { token });
+      socket.emit('chat_authenticate', { token, userType });
     });
 
     socket.on('disconnect', (reason) => {
@@ -67,12 +68,12 @@ const useChat = (user, userType) => {
     });
 
     // Événements d'authentification
-    socket.on('authenticated', (data) => {
+    socket.on('chat_authenticated', (data) => {
       console.log('🔐 Chat authentifié:', data);
       setError(null);
     });
 
-    socket.on('auth_error', (error) => {
+    socket.on('chat_auth_error', (error) => {
       console.error('Erreur auth chat:', error);
       setError('Erreur d\'authentification du chat');
       setIsConnected(false);
@@ -140,7 +141,6 @@ const useChat = (user, userType) => {
 
     socket.on('messages_read', (data) => {
       console.log('✅ Messages lus:', data);
-      // Marquer les messages comme lus visuellement si nécessaire
     });
 
     // Événements de frappe
@@ -206,7 +206,10 @@ const useChat = (user, userType) => {
         }
       });
 
-      if (!response.ok) throw new Error('Erreur lors du chargement des conversations');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erreur lors du chargement des conversations');
+      }
 
       const data = await response.json();
       if (page === 1) {
@@ -244,7 +247,10 @@ const useChat = (user, userType) => {
         body: JSON.stringify({ sujet })
       });
 
-      if (!response.ok) throw new Error('Erreur lors de la création de la conversation');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erreur lors de la création de la conversation');
+      }
 
       const data = await response.json();
       if (data.success) {

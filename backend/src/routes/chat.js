@@ -1,6 +1,6 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { verifyAuth } = require('../controllers/authController');
+const { verifyChatAuth } = require('../controllers/authController');
 const { requireAuth } = require('../middleware/permissions');
 
 const {
@@ -39,9 +39,8 @@ const createConversationLimiter = rateLimit({
   }
 });
 
-// Middleware d'authentification pour toutes les routes
-router.use(verifyAuth);
-router.use(requireAuth);
+// Middleware d'authentification pour toutes les routes 
+router.use(verifyChatAuth); // Au lieu de verifyAuth et requireAuth
 router.use(chatLimiter);
 
 // GET /api/chat/conversations - Liste des conversations

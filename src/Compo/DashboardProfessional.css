@@ -1416,6 +1416,11 @@
   }
 }
 
+.action-card.emerald:hover {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+
 /* Animation pour les actions rapides */
 .action-card {
   animation: fadeInScale 0.5s ease-out;
