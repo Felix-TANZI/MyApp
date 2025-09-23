@@ -40,10 +40,9 @@ const verifyPassword = async (plainPassword, hashedPassword) => {
   }
 };
 
-// CORRECTION: Générer les tokens sans conflit exp
+// Générer les tokens sans conflit exp
 const generateTokens = (payload) => {
   try {
-    // IMPORTANT: Ne pas inclure exp dans le payload si on utilise expiresIn
     const cleanPayload = { ...payload };
     delete cleanPayload.exp; // Supprimer exp s'il existe
     delete cleanPayload.iat; // Supprimer iat s'il existe

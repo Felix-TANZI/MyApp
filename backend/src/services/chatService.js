@@ -20,7 +20,7 @@ class ChatService {
   this.io.on('connection', (socket) => {
     console.log(`Nouvelle connexion chat: ${socket.id}`);
 
-    // DEBUG: Logger tous les événements reçus
+    // Logger tous les événements reçus
     socket.onAny((eventName, ...args) => {
       console.log(`🔍 Événement reçu sur ${socket.id}: ${eventName}`, args.length > 0 ? args[0] : 'sans données');
     });
@@ -103,7 +103,7 @@ class ChatService {
   });
 }
 
-  // Authentifier un socket - CORRIGÉ
+  // Authentifier un socket
 async authenticateSocket(socket, data) {
   console.log('🔍 DÉBUT Authentification socket');
   console.log('🔍 Données reçues complètes:', JSON.stringify(data, null, 2));
@@ -235,7 +235,7 @@ async authenticateSocket(socket, data) {
   }
 }
 
-  // Rejoindre une conversation - AMÉLIORÉ
+  // Rejoindre une conversation
   async joinConversation(socket, data) {
     const { conversationId } = data;
     const { userId, userType } = socket;
@@ -309,7 +309,7 @@ async authenticateSocket(socket, data) {
     console.log(`👋 ${userType} ${socket.userInfo.nom} a quitté la conversation ${conversationId}`);
   }
 
-  // Envoyer un message - AMÉLIORÉ
+  // Envoyer un message
   async sendMessage(socket, data) {
     const { conversationId, message, type = 'text' } = data;
     const { userId, userType, userInfo } = socket;
@@ -411,7 +411,7 @@ async authenticateSocket(socket, data) {
     });
   }
 
-  // Gérer la déconnexion - AMÉLIORÉ
+  // Gérer la déconnexion
   async handleDisconnect(socket) {
     const { userId, userType } = socket;
     
@@ -441,8 +441,6 @@ async authenticateSocket(socket, data) {
       console.log(`👋 Chat déconnecté: ${userType} ${socket.userInfo?.nom} (${socket.id})`);
     }
   }
-
-  // MÉTHODES UTILITAIRES
 
   // Vérifier l'accès à une conversation
   async checkConversationAccess(conversationId, userId, userType) {

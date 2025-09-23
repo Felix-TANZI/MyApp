@@ -1,6 +1,6 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { verifyChatAuth } = require('../controllers/authController'); // Correction de l'import
+const { verifyChatAuth } = require('../controllers/authController');
 const { requireAuth } = require('../middleware/permissions');
 
 const {

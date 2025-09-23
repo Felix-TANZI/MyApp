@@ -3,7 +3,7 @@ const { query } = require('../utils/auth');
 // GET /api/chat/conversations - Liste des conversations
 const getConversations = async (req, res) => {
   try {
-    // CORRECTION: Utiliser les bonnes propriétés du req.user
+    // Utiliser les bonnes propriétés du req.user
     const { id: userId, type: userType } = req.user;
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 20));
@@ -548,8 +548,6 @@ const getChatStats = async (req, res) => {
     });
   }
 };
-
-// FONCTION UTILITAIRE
 
 // Vérifier l'accès à une conversation
 const checkConversationAccess = async (conversationId, userId, userType) => {

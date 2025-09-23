@@ -50,7 +50,7 @@ const loginProfessional = async (req, res) => {
       });
     }
 
-    // CORRECTION: Payload JWT unifié pour le chat
+    // Payload JWT unifié pour le chat
     const payload = {
       userId: user.id,
       userType: 'user', // IMPORTANT pour le chat
@@ -144,7 +144,7 @@ const loginClient = async (req, res) => {
       });
     }
 
-    // CORRECTION: Payload JWT unifié pour le chat
+    // Payload JWT unifié pour le chat
     const payload = {
       userId: client.id,
       userType: 'client', // IMPORTANT pour le chat
@@ -154,7 +154,6 @@ const loginClient = async (req, res) => {
       codeClient: client.code_client,
       entreprise: client.entreprise,
       typeClient: client.type_client,
-      // Ajouter tous les champs nécessaires
     };
 
     const { accessToken, refreshToken } = generateTokens(payload);
@@ -278,7 +277,7 @@ const verifyAuth = async (req, res, next) => {
   }
 };
 
-// CORRECTION: Middleware d'authentification spécifique pour le chat
+// Middleware d'authentification spécifique pour le chat
 const verifyChatAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers['authorization'];
@@ -406,7 +405,7 @@ const getProfile = async (req, res) => {
   }
 };
 
-// NOUVELLE FONCTION: Vérification du token pour les WebSockets
+// FONCTION: Vérification du token pour les WebSockets
 const verifySocketToken = async (token) => {
   try {
     if (!token) {
@@ -464,7 +463,7 @@ module.exports = {
   loginClient,
   logout,
   verifyAuth,
-  verifyChatAuth, // Export du middleware chat
+  verifyChatAuth,
   getProfile,
-  verifySocketToken // NOUVEAU: pour les WebSockets
+  verifySocketToken 
 };

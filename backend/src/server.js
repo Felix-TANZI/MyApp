@@ -1,4 +1,3 @@
-// backend/src/server.js
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
@@ -6,13 +5,13 @@ const http = require('http');
 const socketIo = require('socket.io');
 require('dotenv').config();
 
-// Import des routes principales (qui existent)
+// Import des routes principales
 const authRoutes = require('./routes/auth');
 const clientsRoutes = require('./routes/clients');
 const invoicesRoutes = require('./routes/invoices');
 const usersRoutes = require('./routes/users');
 
-// Import conditionnel des services et routes optionnels avec gestion d'erreur améliorée
+// Import conditionnel des services et routes optionnels avec gestion d'erreur 
 let notificationService;
 let notificationRoutes;
 let chatService;
@@ -36,7 +35,7 @@ try {
   notificationRoutes = null;
 }
 
-// CRITIQUE: Chargement du service de chat - OBLIGATOIRE
+// Chargement du service de chat
 try {
   chatService = require('./services/chatService');
   console.log('✅ Service de chat chargé avec succès');
@@ -46,7 +45,7 @@ try {
   chatService = null;
 }
 
-// CRITIQUE: Chargement des routes chat - OBLIGATOIRE
+// Chargement des routes chat\
 try {
   chatRoutes = require('./routes/chat');
   console.log('✅ Routes chat chargées avec succès');
@@ -62,7 +61,7 @@ const PORT = process.env.PORT || 5000;
 // Créer le serveur HTTP
 const server = http.createServer(app);
 
-// Configuration Socket.io avec CORS améliorée
+// Configuration Socket.io avec CORS
 let io;
 if (notificationService || chatService) {
   try {
@@ -82,7 +81,7 @@ if (notificationService || chatService) {
 
     console.log('🔗 Socket.IO configuré avec succès');
 
-    // CORRECTION: Initialiser les services disponibles avec gestion d'erreur
+    // Initialiser les services disponibles avec gestion d'erreur
 if (notificationService) {
   try {
     // Notifications sur le namespace par défaut
@@ -128,7 +127,7 @@ if (chatService) {
   console.log('⚠️ Aucun service WebSocket disponible - WebSocket non initialisé');
 }
 
-// Configuration CORS pour Express (plus permissive)
+// Configuration CORS pour Express
 app.use(cors({
   origin: function(origin, callback) {
     // Permettre les requêtes sans origin (mobile apps, Postman, etc.)
@@ -176,7 +175,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Middleware pour ajouter les services aux requêtes (si disponibles)
+// Middleware pour ajouter les services aux requêtes
 app.use((req, res, next) => {
   if (notificationService) {
     req.notificationService = notificationService;
@@ -187,7 +186,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Test de connexion MySQL amélioré
+// Test de connexion MySQL
 async function testDB() {
   try {
     const connection = await mysql.createConnection({
@@ -198,7 +197,7 @@ async function testDB() {
       database: process.env.DB_NAME || 'gestionFac'
     });
     
-    // Test avec une requête simple
+    // Test avec une requête 
     await connection.execute('SELECT 1 as test');
     
     console.log('✅ Connexion MySQL réussie');
@@ -230,8 +229,8 @@ app.get('/', (req, res) => {
   };
   
   res.json({
-    message: 'API Amani - Système de Gestion des Factures avec Chat en Temps Réel',
-    version: '2.2.0',
+    message: 'API Amani - Système de Gestion des Factures',
+    version: '1.0.0',
     status: 'running',
     services: {
       notifications: {
@@ -298,7 +297,7 @@ app.get('/', (req, res) => {
       'POST /api/requests/:id/approve-password',
       'POST /api/requests/:id/reject-password',
       
-      // Chat endpoints (si disponible)
+      // Chat endpoints
       ...(chatRoutes ? [
         'GET /api/chat/conversations - Liste des conversations',
         'POST /api/chat/conversations - Créer une conversation (client)',
@@ -310,7 +309,7 @@ app.get('/', (req, res) => {
         'GET /api/chat/stats - Statistiques (pro)'
       ] : ['❌ Chat endpoints non disponibles']),
       
-      // Notifications endpoints (si disponible)
+      // Notifications endpoints
       ...(notificationRoutes ? [
         'GET /api/notifications',
         'POST /api/notifications/send',
@@ -443,7 +442,7 @@ try {
   });
 }
 
-// CRITIQUE: Routes chat - Gestion robuste avec fallback détaillé
+//  chat - Gestion avec fallback
 if (chatRoutes && chatService) {
   try {
     app.use('/api/chat', chatRoutes);
@@ -502,7 +501,7 @@ if (chatRoutes && chatService) {
   });
 }
 
-// Routes notifications (seulement si disponible)
+// Routes notifications
 if (notificationRoutes && notificationService) {
   try {
     app.use('/api/notifications', notificationRoutes);
@@ -592,7 +591,7 @@ app.use('*', (req, res) => {
   res.status(404).json(response);
 });
 
-// Gestion erreurs globales améliorée
+// Gestion erreurs globales
 app.use((error, req, res, next) => {
   console.error('❌ Erreur serveur globale:', {
     message: error.message,
