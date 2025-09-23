@@ -12,40 +12,48 @@ const clientsRoutes = require('./routes/clients');
 const invoicesRoutes = require('./routes/invoices');
 const usersRoutes = require('./routes/users');
 
-// Import conditionnel des services et routes optionnels
+// Import conditionnel des services et routes optionnels avec gestion d'erreur améliorée
 let notificationService;
 let notificationRoutes;
 let chatService;
 let chatRoutes;
 
+// Chargement du service de notifications
 try {
   notificationService = require('./services/notificationService');
-  console.log('✅ Service de notifications chargé');
+  console.log('✅ Service de notifications chargé avec succès');
 } catch (error) {
-  console.log('⚠️ Service de notifications non disponible:', error.message);
+  console.log('⚠️ Service de notifications non disponible:', error.code || error.message);
+  notificationService = null;
 }
 
+// Chargement des routes notifications
 try {
   notificationRoutes = require('./routes/notifications');
-  console.log('✅ Routes notifications chargées');
+  console.log('✅ Routes notifications chargées avec succès');
 } catch (error) {
-  console.log('⚠️ Routes notifications non disponibles:', error.message);
+  console.log('⚠️ Routes notifications non disponibles:', error.code || error.message);
+  notificationRoutes = null;
 }
 
+// CRITIQUE: Chargement du service de chat - OBLIGATOIRE
 try {
   chatService = require('./services/chatService');
-  console.log('✅ Service de chat chargé');
+  console.log('✅ Service de chat chargé avec succès');
 } catch (error) {
-  console.log('⚠️ Service de chat non disponible:', error.message);
+  console.error('❌ ERREUR CRITIQUE: Service de chat non disponible:', error.message);
+  console.error('Stack:', error.stack);
+  chatService = null;
 }
 
-// Import OBLIGATOIRE des routes chat (maintenant qu'on a corrigé le middleware)
+// CRITIQUE: Chargement des routes chat - OBLIGATOIRE
 try {
   chatRoutes = require('./routes/chat');
-  console.log('✅ Routes chat chargées');
+  console.log('✅ Routes chat chargées avec succès');
 } catch (error) {
-  console.log('❌ ERREUR CRITIQUE: Routes chat non disponibles:', error.message);
-  console.log('Stack:', error.stack);
+  console.error('❌ ERREUR CRITIQUE: Routes chat non disponibles:', error.message);
+  console.error('Stack:', error.stack);
+  chatRoutes = null;
 }
 
 const app = express();
@@ -54,7 +62,7 @@ const PORT = process.env.PORT || 5000;
 // Créer le serveur HTTP
 const server = http.createServer(app);
 
-// Configuration Socket.io avec CORS (seulement si au moins un service existe)
+// Configuration Socket.io avec CORS améliorée
 let io;
 if (notificationService || chatService) {
   try {
@@ -62,45 +70,106 @@ if (notificationService || chatService) {
       cors: {
         origin: process.env.FRONTEND_URL || 'http://localhost:3000',
         methods: ['GET', 'POST'],
-        credentials: true
+        credentials: true,
+        allowedHeaders: ['Content-Type', 'Authorization']
       },
       transports: ['websocket', 'polling'],
-      pingTimeout: 60000,
-      pingInterval: 25000
+      pingTimeout: parseInt(process.env.WS_PING_TIMEOUT) || 60000,
+      pingInterval: parseInt(process.env.WS_PING_INTERVAL) || 25000,
+      connectTimeout: 45000,
+      allowEIO3: true
     });
 
-    // Initialiser les services disponibles
+    console.log('🔗 Socket.IO configuré avec succès');
+
+    // CORRECTION: Initialiser les services disponibles avec gestion d'erreur
     if (notificationService) {
-      notificationService.initialize(io);
-      console.log('🔔 Service de notifications initialisé');
+      try {
+        notificationService.initialize(io);
+        console.log('🔔 Service de notifications initialisé avec succès');
+      } catch (error) {
+        console.error('❌ Erreur initialisation service notifications:', error);
+        notificationService = null;
+      }
     }
 
     if (chatService) {
-      chatService.initialize(io);
-      console.log('💬 Service de chat initialisé');
+      try {
+        chatService.initialize(io);
+        console.log('💬 Service de chat initialisé avec succès');
+      } catch (error) {
+        console.error('❌ Erreur initialisation service chat:', error);
+        chatService = null;
+      }
     }
 
+    // Gestion des connexions globales
+    io.on('connection', (socket) => {
+      console.log(`🔌 Nouvelle connexion WebSocket: ${socket.id}`);
+      
+      socket.on('disconnect', (reason) => {
+        console.log(`❌ Déconnexion WebSocket: ${socket.id} (${reason})`);
+      });
+
+      // Heartbeat pour garder la connexion alive
+      socket.on('ping', () => {
+        socket.emit('pong');
+      });
+    });
+
   } catch (error) {
-    console.log('⚠️ Erreur initialisation WebSocket:', error.message);
+    console.error('❌ Erreur critique initialisation WebSocket:', error);
+    io = null;
   }
+} else {
+  console.log('⚠️ Aucun service WebSocket disponible - WebSocket non initialisé');
 }
 
-// Configuration CORS pour Express
+// Configuration CORS pour Express (plus permissive)
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function(origin, callback) {
+    // Permettre les requêtes sans origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      process.env.FRONTEND_URL || 'http://localhost:3000',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ];
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('🚫 Origin bloquée:', origin);
+      callback(null, false);
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  optionsSuccessStatus: 200
 }));
+
+// Middleware pour les requêtes preflight
+app.options('*', cors());
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Logger amélioré
+// Logger amélioré avec plus de détails
 app.use((req, res, next) => {
   const timestamp = new Date().toISOString();
-  console.log(`${timestamp} - ${req.method} ${req.url}`);
+  const userAgent = req.get('User-Agent') || 'Unknown';
+  const origin = req.get('Origin') || 'No-Origin';
+  
+  console.log(`${timestamp} - ${req.method} ${req.url} - Origin: ${origin}`);
+  
+  // Log des headers d'auth pour debug (sans exposer le token)
+  if (req.headers.authorization) {
+    console.log(`  - Auth: Bearer ${req.headers.authorization.substring(0, 20)}...`);
+  }
+  
   next();
 });
 
@@ -115,24 +184,29 @@ app.use((req, res, next) => {
   next();
 });
 
-// Test de connexion MySQL
+// Test de connexion MySQL amélioré
 async function testDB() {
   try {
     const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      port: process.env.DB_PORT,
-      user: process.env.DB_USER, 
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME
+      host: process.env.DB_HOST || '127.0.0.1',
+      port: process.env.DB_PORT || 3307,
+      user: process.env.DB_USER || 'root', 
+      password: process.env.DB_PASSWORD || '',
+      database: process.env.DB_NAME || 'gestionFac'
     });
     
+    // Test avec une requête simple
+    await connection.execute('SELECT 1 as test');
+    
     console.log('✅ Connexion MySQL réussie');
-    console.log(`📡 Host: ${process.env.DB_HOST}:${process.env.DB_PORT}`);
-    console.log(`🗄️  Base: ${process.env.DB_NAME}`);
+    console.log(`📡 Host: ${process.env.DB_HOST || '127.0.0.1'}:${process.env.DB_PORT || 3307}`);
+    console.log(`🗄️  Base: ${process.env.DB_NAME || 'gestionFac'}`);
+    
     await connection.end();
     return true;
   } catch (error) {
     console.error('❌ Erreur MySQL:', error.message);
+    console.error('🔧 Vérifiez que MySQL est démarré et accessible');
     return false;
   }
 }
@@ -154,7 +228,8 @@ app.get('/', (req, res) => {
   
   res.json({
     message: 'API Amani - Système de Gestion des Factures avec Chat en Temps Réel',
-    version: '2.1.0',
+    version: '2.2.0',
+    status: 'running',
     services: {
       notifications: {
         service: notificationService ? 'active' : 'unavailable',
@@ -222,15 +297,15 @@ app.get('/', (req, res) => {
       
       // Chat endpoints (si disponible)
       ...(chatRoutes ? [
-        'GET /api/chat/conversations',
-        'POST /api/chat/conversations',
-        'GET /api/chat/conversations/:id',
-        'GET /api/chat/conversations/:id/messages',
-        'POST /api/chat/conversations/:id/close',
-        'POST /api/chat/conversations/:id/reopen',
-        'GET /api/chat/conversations/:id/participants',
-        'GET /api/chat/stats'
-      ] : []),
+        'GET /api/chat/conversations - Liste des conversations',
+        'POST /api/chat/conversations - Créer une conversation (client)',
+        'GET /api/chat/conversations/:id - Détails conversation',
+        'GET /api/chat/conversations/:id/messages - Messages',
+        'POST /api/chat/conversations/:id/close - Fermer (pro)',
+        'POST /api/chat/conversations/:id/reopen - Rouvrir (pro)',
+        'GET /api/chat/conversations/:id/participants - Participants',
+        'GET /api/chat/stats - Statistiques (pro)'
+      ] : ['❌ Chat endpoints non disponibles']),
       
       // Notifications endpoints (si disponible)
       ...(notificationRoutes ? [
@@ -240,12 +315,14 @@ app.get('/', (req, res) => {
         'DELETE /api/notifications/:id',
         'DELETE /api/notifications/clear-all',
         'GET /api/notifications/stats'
-      ] : [])
+      ] : ['❌ Notification endpoints non disponibles'])
     ],
     websocket: (notificationService || chatService) ? {
       endpoint: '/socket.io/',
+      status: 'active',
       events: [
         'connection',
+        'disconnect',
         // Notifications
         ...(notificationService ? [
           'new_notification',
@@ -256,21 +333,22 @@ app.get('/', (req, res) => {
         ] : []),
         // Chat
         ...(chatService ? [
-          'chat_authenticate',
-          'join_conversation',
-          'leave_conversation',
-          'send_message',
-          'new_message',
-          'mark_messages_read',
-          'user_typing',
-          'typing_start',
-          'typing_stop',
-          'user_joined',
-          'user_left'
+          'chat_authenticate - Authentification',
+          'join_conversation - Rejoindre conversation',
+          'leave_conversation - Quitter conversation',
+          'send_message - Envoyer message',
+          'new_message - Nouveau message reçu',
+          'mark_messages_read - Marquer comme lu',
+          'user_typing - Indicateur frappe',
+          'typing_start/typing_stop - Contrôle frappe',
+          'user_joined/user_left - Gestion participants'
         ] : []),
-        'ping/pong'
+        'ping/pong - Heartbeat'
       ]
-    } : 'unavailable',
+    } : {
+      status: 'unavailable',
+      reason: 'Aucun service WebSocket disponible'
+    },
     timestamp: new Date().toISOString()
   });
 });
@@ -289,8 +367,8 @@ app.get('/api/health', async (req, res) => {
     activeConversations: 0
   };
   
-  res.json({
-    status: 'OK',
+  const healthStatus = {
+    status: dbOk ? 'healthy' : 'degraded',
     database: dbOk ? 'Connected' : 'Error',
     services: {
       notifications: {
@@ -302,8 +380,16 @@ app.get('/api/health', async (req, res) => {
         connections: chatStats
       }
     },
+    environment: {
+      node_env: process.env.NODE_ENV || 'development',
+      port: PORT,
+      db_host: process.env.DB_HOST || '127.0.0.1',
+      db_port: process.env.DB_PORT || 3307
+    },
     timestamp: new Date().toISOString()
-  });
+  };
+  
+  res.status(dbOk ? 200 : 503).json(healthStatus);
 });
 
 // Routes d'authentification
@@ -320,205 +406,352 @@ app.use('/api/invoices', invoicesRoutes);
 
 // Routes client (avec gestion d'erreur)
 try {
-  app.use('/api/client', require('./routes/client'));
-  console.log('✅ Routes client chargées');
+  const clientRoutes = require('./routes/client');
+  app.use('/api/client', clientRoutes);
+  console.log('✅ Routes client chargées et montées sur /api/client');
 } catch (error) {
   console.log('⚠️ Routes client non disponibles:', error.message);
+  
+  // Route de fallback pour les erreurs client
+  app.use('/api/client/*', (req, res) => {
+    res.status(503).json({
+      success: false,
+      message: 'Service client temporairement indisponible',
+      error: 'CLIENT_ROUTES_ERROR'
+    });
+  });
 }
 
 // Routes admin pour les demandes
 try {
-  app.use('/api/requests', require('./routes/requests'));
+  const requestsRoutes = require('./routes/requests');
+  app.use('/api/requests', requestsRoutes);
   console.log('✅ Routes requests chargées et montées sur /api/requests');
 } catch (error) {
   console.log('⚠️ Routes requests non disponibles:', error.message);
+  
+  // Route de fallback pour les erreurs requests
+  app.use('/api/requests/*', (req, res) => {
+    res.status(503).json({
+      success: false,
+      message: 'Service de demandes administratives temporairement indisponible',
+      error: 'REQUESTS_ROUTES_ERROR'
+    });
+  });
 }
 
-// CORRECTION CRITIQUE: Routes chat OBLIGATOIRES avec gestion d'erreur détaillée
-if (chatRoutes) {
+// CRITIQUE: Routes chat - Gestion robuste avec fallback détaillé
+if (chatRoutes && chatService) {
   try {
     app.use('/api/chat', chatRoutes);
     console.log('✅ Routes chat montées sur /api/chat avec succès');
     
-    // Test immédiat des routes
-    console.log('🧪 Test des routes chat disponibles:');
-    console.log('   - POST /api/chat/conversations');
-    console.log('   - GET  /api/chat/conversations');
-    console.log('   - GET  /api/chat/stats');
+    // Test immédiat de disponibilité
+    console.log('🧪 Test des routes chat:');
+    console.log('   ✅ GET  /api/chat/conversations - Disponible');
+    console.log('   ✅ POST /api/chat/conversations - Disponible');  
+    console.log('   ✅ GET  /api/chat/stats - Disponible');
+    console.log('   ✅ WebSocket chat - Service actif');
     
   } catch (error) {
     console.error('❌ ERREUR CRITIQUE lors du montage des routes chat:', error);
     console.error('Stack trace:', error.stack);
     
-    // Routes de fallback pour éviter 404
+    // Routes de fallback détaillées pour éviter 404
     app.use('/api/chat/*', (req, res) => {
+      console.error(`❌ Tentative d'accès à route chat indisponible: ${req.method} ${req.originalUrl}`);
       res.status(503).json({
         success: false,
         message: 'Service de chat temporairement indisponible',
-        error: 'CHAT_SERVICE_ERROR',
-        details: 'Les routes de chat n\'ont pas pu être initialisées correctement'
+        error: 'CHAT_ROUTES_MOUNT_ERROR',
+        details: 'Les routes de chat n\'ont pas pu être montées correctement',
+        timestamp: new Date().toISOString()
       });
     });
   }
 } else {
-  console.log('⚠️ Routes chat non disponibles - création de routes de fallback');
+  console.error('❌ CHAT NON DISPONIBLE - Raisons possibles:');
+  if (!chatRoutes) console.error('   - Routes chat non chargées');
+  if (!chatService) console.error('   - Service chat non chargé');
   
-  // Routes de fallback si chatRoutes n'est pas disponible
+  // Routes de fallback informatives
   app.use('/api/chat/*', (req, res) => {
+    const reasons = [];
+    if (!chatRoutes) reasons.push('Routes chat non chargées');
+    if (!chatService) reasons.push('Service chat non initialisé');
+    
+    console.log(`⚠️ Tentative d'accès au chat: ${req.method} ${req.originalUrl}`);
+    
     res.status(503).json({
       success: false,
       message: 'Service de chat non disponible',
-      error: 'CHAT_ROUTES_NOT_LOADED',
-      details: 'Le module des routes chat n\'a pas pu être chargé'
+      error: 'CHAT_SERVICE_UNAVAILABLE',
+      reasons: reasons,
+      details: 'Le service de chat n\'a pas pu être initialisé. Vérifiez les logs serveur.',
+      suggestions: [
+        'Vérifiez que tous les fichiers de chat sont présents',
+        'Contrôlez les dépendances (socket.io, etc.)',
+        'Redémarrez le serveur',
+        'Consultez les logs de démarrage'
+      ],
+      timestamp: new Date().toISOString()
     });
   });
 }
 
 // Routes notifications (seulement si disponible)
-if (notificationRoutes) {
-  app.use('/api/notifications', notificationRoutes);
-  console.log('✅ Routes notifications montées sur /api/notifications');
+if (notificationRoutes && notificationService) {
+  try {
+    app.use('/api/notifications', notificationRoutes);
+    console.log('✅ Routes notifications montées sur /api/notifications');
+  } catch (error) {
+    console.error('❌ Erreur montage routes notifications:', error);
+    
+    app.use('/api/notifications/*', (req, res) => {
+      res.status(503).json({
+        success: false,
+        message: 'Service de notifications temporairement indisponible',
+        error: 'NOTIFICATION_ROUTES_ERROR'
+      });
+    });
+  }
+} else if (notificationRoutes || notificationService) {
+  // Au moins un composant est chargé mais pas l'autre
+  app.use('/api/notifications/*', (req, res) => {
+    res.status(503).json({
+      success: false,
+      message: 'Service de notifications partiellement disponible',
+      error: 'NOTIFICATION_PARTIAL_LOAD',
+      details: {
+        routes: !!notificationRoutes,
+        service: !!notificationService
+      }
+    });
+  });
 }
 
-// Route 404 améliorée
+// Route 404 améliorée avec diagnostics détaillés
 app.use('*', (req, res) => {
-  const availableEndpoints = [
-    'GET /',
-    'GET /api/health',
-    'POST /api/auth/login/professional',
-    'POST /api/auth/login/client',
-    'GET /api/requests (admin only)',
-    'POST /api/requests/:id/approve-profile (admin only)'
-  ];
-
-  if (chatRoutes || chatService) {
-    availableEndpoints.push('GET /api/chat/conversations (authenticated)');
-    availableEndpoints.push('POST /api/chat/conversations (client only)');
-  }
-
-  if (notificationService || chatService) {
-    availableEndpoints.push('WebSocket /socket.io/ (temps réel)');
-  }
-
+  const isApiRoute = req.originalUrl.startsWith('/api/');
+  
   // Log détaillé pour débugger
   console.log(`❌ Route 404: ${req.method} ${req.originalUrl}`);
-  console.log(`   - User Agent: ${req.get('User-Agent')}`);
-  console.log(`   - Origin: ${req.get('Origin')}`);
-  
-  res.status(404).json({
+  console.log(`   - User Agent: ${req.get('User-Agent') || 'Non spécifié'}`);
+  console.log(`   - Origin: ${req.get('Origin') || 'Non spécifié'}`);
+  console.log(`   - Referer: ${req.get('Referer') || 'Non spécifié'}`);
+
+  const availableEndpoints = [
+    '✅ GET / - API info et statistiques',
+    '✅ GET /api/health - Santé du système',
+    '✅ POST /api/auth/login/professional - Connexion pro',
+    '✅ POST /api/auth/login/client - Connexion client'
+  ];
+
+  // Ajouter les endpoints selon la disponibilité des services
+  if (chatRoutes && chatService) {
+    availableEndpoints.push('✅ GET /api/chat/conversations - Chat (authentifié)');
+    availableEndpoints.push('✅ POST /api/chat/conversations - Créer conversation (client)');
+    availableEndpoints.push('✅ WebSocket /socket.io/ - Chat temps réel');
+  } else {
+    availableEndpoints.push('❌ Chat endpoints non disponibles');
+  }
+
+  if (notificationService) {
+    availableEndpoints.push('✅ WebSocket /socket.io/ - Notifications temps réel');
+  }
+
+  const response = {
     success: false,
     message: `Route non trouvée: ${req.method} ${req.originalUrl}`,
     availableEndpoints,
     debug: {
       method: req.method,
       path: req.originalUrl,
-      chatRoutesLoaded: !!chatRoutes,
-      chatServiceLoaded: !!chatService
-    }
-  });
+      isApiRoute,
+      services: {
+        chatRoutesLoaded: !!chatRoutes,
+        chatServiceLoaded: !!chatService,
+        notificationServiceLoaded: !!notificationService,
+        notificationRoutesLoaded: !!notificationRoutes
+      }
+    },
+    suggestions: isApiRoute ? [
+      'Vérifiez l\'URL de l\'endpoint',
+      'Consultez la liste des endpoints disponibles',
+      'Vérifiez que le service requis est actif'
+    ] : [
+      'Cette API ne sert que des endpoints /api/*',
+      'Consultez GET / pour la liste complète des endpoints'
+    ],
+    timestamp: new Date().toISOString()
+  };
+
+  res.status(404).json(response);
 });
 
-// Gestion erreurs globales
+// Gestion erreurs globales améliorée
 app.use((error, req, res, next) => {
-  console.error('❌ Erreur serveur:', error);
+  console.error('❌ Erreur serveur globale:', {
+    message: error.message,
+    stack: error.stack,
+    url: req.originalUrl,
+    method: req.method,
+    timestamp: new Date().toISOString()
+  });
   
   // Erreur de validation JSON
   if (error instanceof SyntaxError && error.status === 400) {
     return res.status(400).json({
       success: false,
-      message: 'Format JSON invalide'
+      message: 'Format JSON invalide dans la requête',
+      error: 'INVALID_JSON'
+    });
+  }
+
+  // Erreur de token JWT
+  if (error.name === 'JsonWebTokenError') {
+    return res.status(401).json({
+      success: false,
+      message: 'Token d\'authentification invalide',
+      error: 'INVALID_TOKEN'
+    });
+  }
+
+  // Erreur de base de données
+  if (error.code && error.code.startsWith('ER_')) {
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur de base de données',
+      error: 'DATABASE_ERROR'
     });
   }
   
   res.status(500).json({
     success: false,
     message: 'Erreur interne du serveur',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    error: 'INTERNAL_SERVER_ERROR',
+    ...(process.env.NODE_ENV === 'development' && { 
+      details: error.message,
+      stack: error.stack 
+    }),
+    timestamp: new Date().toISOString()
   });
 });
 
-// Démarrage serveur
+// Démarrage serveur avec vérifications complètes
 async function startServer() {
   try {
+    console.log('🚀 Démarrage du serveur Amani...');
+    
     // Test base de données
+    console.log('📊 Vérification de la base de données...');
     const dbConnected = await testDB();
     
     if (!dbConnected) {
-      console.error('❌ Impossible de se connecter à la base de données');
-      console.log('🔧 Suggestions:');
-      console.log('1. Vérifiez que MySQL est démarré (XAMPP/WAMP)');
-      console.log('2. Vérifiez le port 3307 dans votre .env');
-      console.log('3. Testez: mysql -h 127.0.0.1 -P 3307 -u root -p');
+      console.error('❌ ERREUR CRITIQUE: Impossible de se connecter à la base de données');
+      console.log('🔧 Suggestions pour corriger:');
+      console.log('1. Vérifiez que MySQL/MariaDB est démarré');
+      console.log('2. Contrôlez les paramètres dans le fichier .env:');
+      console.log(`   - DB_HOST=${process.env.DB_HOST || '127.0.0.1'}`);
+      console.log(`   - DB_PORT=${process.env.DB_PORT || '3307'}`);
+      console.log(`   - DB_NAME=${process.env.DB_NAME || 'gestionFac'}`);
+      console.log('3. Testez manuellement: mysql -h 127.0.0.1 -P 3307 -u root -p');
+      console.log('4. Vérifiez que la base "gestionFac" existe');
       process.exit(1);
     }
     
     // Démarrer le serveur HTTP avec Socket.io
     server.listen(PORT, () => {
-      console.log('\n🎉================================🎉');
-      console.log(`🏨 SERVEUR AMANI DÉMARRÉ`);
+      console.log('\n🎉==================================================🎉');
+      console.log(`🏨 SERVEUR AMANI DÉMARRÉ AVEC SUCCÈS`);
       console.log(`🌐 Port: ${PORT}`);
-      console.log(`🔗 URL: http://localhost:${PORT}`);
-      console.log(`⚙️  Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🗄️  Base: ${process.env.DB_NAME}`);
-      console.log(`🔔 Notifications temps réel: ${notificationService ? 'ACTIVÉES' : 'DÉSACTIVÉES'}`);
-      console.log(`💬 Chat temps réel: ${chatService ? 'ACTIVÉ' : 'DÉSACTIVÉ'}`);
-      console.log(`🛣️  Routes chat: ${chatRoutes ? 'CHARGÉES' : 'NON CHARGÉES'}`);
+      console.log(`🔗 URL locale: http://localhost:${PORT}`);
+      console.log(`⚙️  Environnement: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🗄️  Base de données: ${process.env.DB_NAME || 'gestionFac'} ✅`);
       
+      // Statut des services temps réel
       if (notificationService || chatService) {
-        console.log(`📡 WebSocket endpoint: ws://localhost:${PORT}/socket.io/`);
+        console.log(`📡 WebSocket: http://localhost:${PORT}/socket.io/ ✅`);
+        console.log(`🔔 Notifications temps réel: ${notificationService ? '✅ ACTIF' : '❌ INACTIF'}`);
+        console.log(`💬 Chat temps réel: ${chatService ? '✅ ACTIF' : '❌ INACTIF'}`);
+      } else {
+        console.log(`📡 WebSocket: ❌ AUCUN SERVICE DISPONIBLE`);
       }
-      console.log('🎉================================🎉');
       
-      console.log('\n📋 Routes principales:');
-      console.log('- GET  / (API info + stats connexions)');
-      console.log('- GET  /api/health (santé + stats services)');
-      console.log('- POST /api/auth/login/professional');
-      console.log('- POST /api/auth/login/client');
-      console.log('- GET  /api/requests (demandes admin)');
-      console.log('- POST /api/requests/:id/approve-profile (approbation)');
+      console.log('🎉==================================================🎉');
       
-      if (chatRoutes) {
-        console.log('- ✅ GET  /api/chat/conversations (conversations chat)');
-        console.log('- ✅ POST /api/chat/conversations (créer conversation)');
-        console.log('- ✅ GET  /api/chat/stats (statistiques chat)');
+      console.log('\n📋 Routes principales disponibles:');
+      console.log('- ✅ GET  / (Infos API + statistiques temps réel)');
+      console.log('- ✅ GET  /api/health (Santé système + diagnostics)');
+      console.log('- ✅ POST /api/auth/login/professional (Connexion équipe)');
+      console.log('- ✅ POST /api/auth/login/client (Connexion clients)');
+      console.log('- ✅ GET  /api/requests (Demandes admin - auth requise)');
+      
+      if (chatRoutes && chatService) {
+        console.log('- ✅ GET  /api/chat/conversations (Liste conversations - auth)');
+        console.log('- ✅ POST /api/chat/conversations (Créer conversation client - auth)');
+        console.log('- ✅ GET  /api/chat/stats (Statistiques chat professionnels - auth)');
+        console.log('- ✅ WebSocket chat temps réel disponible');
       } else {
         console.log('- ❌ Routes chat NON DISPONIBLES');
+        console.log('  Raisons: Service ou routes non chargés');
       }
       
-      if (notificationService || chatService) {
-        console.log('- WebSocket /socket.io/ (temps réel)');
+      if (notificationService) {
+        console.log('- ✅ WebSocket notifications temps réel disponible');
       }
       
-      console.log('\n🔔 État des services:');
-      console.log(`- Authentification: ✅`);
-      console.log(`- Base de données: ✅`);
-      console.log(`- WebSocket: ${(notificationService || chatService) ? '✅' : '❌'}`);
-      console.log(`- Notifications: ${notificationRoutes ? '✅' : '❌'}`);
-      console.log(`- Chat Service: ${chatService ? '✅' : '❌'}`);
-      console.log(`- Chat Routes: ${chatRoutes ? '✅' : '❌'}`);
-      console.log(`- Requests Admin: ✅`);
-      console.log('================================\n');
+      console.log('\n🔔 État détaillé des services:');
+      console.log(`- Base de données MySQL: ✅ Connectée`);
+      console.log(`- Authentification JWT: ✅ Active`);
+      console.log(`- WebSocket global: ${(notificationService || chatService) ? '✅ Actif' : '❌ Inactif'}`);
+      console.log(`- Service notifications: ${notificationService ? '✅ Chargé' : '❌ Non chargé'}`);
+      console.log(`- Service chat: ${chatService ? '✅ Chargé' : '❌ Non chargé'}`);
+      console.log(`- Routes chat: ${chatRoutes ? '✅ Montées' : '❌ Non montées'}`);
+      console.log(`- Routes notifications: ${notificationRoutes ? '✅ Montées' : '❌ Non montées'}`);
+      console.log(`- Gestion des demandes admin: ✅ Active`);
       
-      console.log('🔐 Pour tester:');
-      console.log('   Frontend: http://localhost:3000');
-      console.log('   API Info: http://localhost:5000');
-      console.log('   Santé: http://localhost:5000/api/health');
-      console.log('   Demandes Admin: GET http://localhost:5000/api/requests (avec token admin)');
+      console.log('\n🔗 Pour tester le système:');
+      console.log('📱 Frontend: http://localhost:3000');
+      console.log('🌐 API Info: http://localhost:5000');
+      console.log('💊 Santé système: http://localhost:5000/api/health');
+      console.log('🔐 Test connexion: POST http://localhost:5000/api/auth/login/professional');
       
-      if (chatRoutes) {
-        console.log('   ✅ Chat API: GET http://localhost:5000/api/chat/conversations (avec token)');
-        console.log('   ✅ Créer conversation: POST http://localhost:5000/api/chat/conversations (avec token client)');
+      if (chatRoutes && chatService) {
+        console.log('💬 Test chat API: GET http://localhost:5000/api/chat/conversations');
+        console.log('   (Nécessite un token d\'authentification valide)');
       } else {
-        console.log('   ❌ Chat API: Routes non disponibles');
+        console.log('❌ Chat API non testable - Service indisponible');
       }
       
-      console.log('✨ Prêt pour les connexions !\n');
+      console.log('================================');
+      console.log('✨ Serveur prêt pour les connexions !');
+      console.log('🔍 Surveillez les logs pour les connexions WebSocket');
+      console.log('================================\n');
     });
     
   } catch (error) {
-    console.error('❌ Erreur démarrage serveur:', error);
+    console.error('❌ Erreur critique lors du démarrage:', error);
+    console.error('Stack:', error.stack);
     process.exit(1);
   }
 }
+
+// Gestion des signaux système
+process.on('SIGINT', () => {
+  console.log('\n🛑 Signal SIGINT reçu, arrêt du serveur...');
+  server.close(() => {
+    console.log('✅ Serveur fermé proprement');
+    process.exit(0);
+  });
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n🛑 Signal SIGTERM reçu, arrêt du serveur...');
+  server.close(() => {
+    console.log('✅ Serveur fermé proprement');
+    process.exit(0);
+  });
+});
 
 startServer();

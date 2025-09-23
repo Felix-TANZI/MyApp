@@ -3,7 +3,8 @@ const { query } = require('../utils/auth');
 // GET /api/chat/conversations - Liste des conversations
 const getConversations = async (req, res) => {
   try {
-    const { userId, userType } = req.user;
+    // CORRECTION: Utiliser les bonnes propriétés du req.user
+    const { id: userId, type: userType } = req.user;
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 20));
     const statut = req.query.statut || '';
@@ -11,6 +12,8 @@ const getConversations = async (req, res) => {
     
     const offset = (page - 1) * limit;
     
+    console.log('📋 Récupération conversations:', { userId, userType, page, limit, statut, search });
+
     let whereConditions = [];
     let queryParams = [];
     
@@ -58,6 +61,8 @@ const getConversations = async (req, res) => {
       LIMIT ${limit} OFFSET ${offset}
     `, queryParams);
     
+    console.log('✅ Conversations trouvées:', conversations.length);
+
     res.json({
       success: true,
       data: {
@@ -77,7 +82,8 @@ const getConversations = async (req, res) => {
     console.error('Erreur récupération conversations:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur serveur lors de la récupération des conversations'
+      message: 'Erreur serveur lors de la récupération des conversations',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -85,8 +91,10 @@ const getConversations = async (req, res) => {
 // POST /api/chat/conversations - Créer une nouvelle conversation (client uniquement)
 const createConversation = async (req, res) => {
   try {
-    const { userId, userType } = req.user;
+    const { id: userId, type: userType } = req.user;
     const { sujet = 'Support général' } = req.body;
+
+    console.log('🆕 Création conversation:', { userId, userType, sujet });
 
     // Seuls les clients peuvent créer des conversations
     if (userType !== 'client') {
@@ -103,11 +111,13 @@ const createConversation = async (req, res) => {
     `, [userId]);
 
     if (existingConversations.length > 0) {
+      console.log('✅ Conversation existante trouvée:', existingConversations[0].id);
       return res.json({
         success: true,
         message: 'Conversation existante trouvée',
         data: {
-          conversation_id: existingConversations[0].id
+          conversation_id: existingConversations[0].id,
+          id: existingConversations[0].id
         }
       });
     }
@@ -139,20 +149,27 @@ const createConversation = async (req, res) => {
       userId, 
       result.insertId, 
       JSON.stringify({ sujet }),
-      req.ip
+      req.ip || req.connection.remoteAddress
     ]);
+
+    console.log('✅ Nouvelle conversation créée:', result.insertId);
 
     res.status(201).json({
       success: true,
       message: 'Conversation créée avec succès',
-      data: newConversation[0]
+      data: {
+        conversation_id: result.insertId,
+        id: result.insertId,
+        ...newConversation[0]
+      }
     });
 
   } catch (error) {
     console.error('Erreur création conversation:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur serveur lors de la création de la conversation'
+      message: 'Erreur serveur lors de la création de la conversation',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -161,7 +178,9 @@ const createConversation = async (req, res) => {
 const getConversationById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId, userType } = req.user;
+    const { id: userId, type: userType } = req.user;
+
+    console.log('🔍 Récupération conversation:', { conversationId: id, userId, userType });
 
     // Vérifier l'accès à la conversation
     const hasAccess = await checkConversationAccess(id, userId, userType);
@@ -184,6 +203,8 @@ const getConversationById = async (req, res) => {
       });
     }
 
+    console.log('✅ Conversation trouvée:', conversations[0].id);
+
     res.json({
       success: true,
       data: conversations[0]
@@ -193,7 +214,8 @@ const getConversationById = async (req, res) => {
     console.error('Erreur récupération conversation:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur serveur lors de la récupération de la conversation'
+      message: 'Erreur serveur lors de la récupération de la conversation',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -202,11 +224,13 @@ const getConversationById = async (req, res) => {
 const getConversationMessages = async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId, userType } = req.user;
+    const { id: userId, type: userType } = req.user;
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 50));
     
     const offset = (page - 1) * limit;
+
+    console.log('💬 Récupération messages:', { conversationId: id, userId, userType, page, limit });
 
     // Vérifier l'accès à la conversation
     const hasAccess = await checkConversationAccess(id, userId, userType);
@@ -233,6 +257,8 @@ const getConversationMessages = async (req, res) => {
     // Inverser l'ordre pour afficher du plus ancien au plus récent
     messages.reverse();
 
+    console.log('✅ Messages trouvés:', messages.length);
+
     res.json({
       success: true,
       data: {
@@ -252,7 +278,8 @@ const getConversationMessages = async (req, res) => {
     console.error('Erreur récupération messages:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur serveur lors de la récupération des messages'
+      message: 'Erreur serveur lors de la récupération des messages',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -261,7 +288,9 @@ const getConversationMessages = async (req, res) => {
 const closeConversation = async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId, userType } = req.user;
+    const { id: userId, type: userType } = req.user;
+
+    console.log('🔒 Fermeture conversation:', { conversationId: id, userId, userType });
 
     // Seuls les professionnels peuvent fermer des conversations
     if (userType !== 'user') {
@@ -322,8 +351,10 @@ const closeConversation = async (req, res) => {
       userId, 
       id, 
       JSON.stringify({ action: 'Conversation fermée' }),
-      req.ip
+      req.ip || req.connection.remoteAddress
     ]);
+
+    console.log('✅ Conversation fermée:', id);
 
     res.json({
       success: true,
@@ -334,7 +365,8 @@ const closeConversation = async (req, res) => {
     console.error('Erreur fermeture conversation:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur serveur lors de la fermeture de la conversation'
+      message: 'Erreur serveur lors de la fermeture de la conversation',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -343,7 +375,9 @@ const closeConversation = async (req, res) => {
 const reopenConversation = async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId, userType } = req.user;
+    const { id: userId, type: userType } = req.user;
+
+    console.log('🔓 Réouverture conversation:', { conversationId: id, userId, userType });
 
     // Seuls les professionnels peuvent rouvrir des conversations
     if (userType !== 'user') {
@@ -375,6 +409,8 @@ const reopenConversation = async (req, res) => {
       VALUES (?, 'user', ?, 'Conversation rouverte par un membre de l\'équipe', 'system')
     `, [id, userId]);
 
+    console.log('✅ Conversation rouverte:', id);
+
     res.json({
       success: true,
       message: 'Conversation rouverte avec succès'
@@ -384,7 +420,8 @@ const reopenConversation = async (req, res) => {
     console.error('Erreur réouverture conversation:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur serveur lors de la réouverture de la conversation'
+      message: 'Erreur serveur lors de la réouverture de la conversation',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -393,7 +430,9 @@ const reopenConversation = async (req, res) => {
 const getConversationParticipants = async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId, userType } = req.user;
+    const { id: userId, type: userType } = req.user;
+
+    console.log('👥 Récupération participants:', { conversationId: id, userId, userType });
 
     // Vérifier l'accès à la conversation
     const hasAccess = await checkConversationAccess(id, userId, userType);
@@ -433,6 +472,8 @@ const getConversationParticipants = async (req, res) => {
       ORDER BY cp.en_ligne DESC, cp.derniere_vue DESC
     `, [id]);
 
+    console.log('✅ Participants trouvés:', participants.length);
+
     res.json({
       success: true,
       data: participants
@@ -442,7 +483,8 @@ const getConversationParticipants = async (req, res) => {
     console.error('Erreur récupération participants:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur serveur lors de la récupération des participants'
+      message: 'Erreur serveur lors de la récupération des participants',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -450,7 +492,9 @@ const getConversationParticipants = async (req, res) => {
 // GET /api/chat/stats - Statistiques du chat (professionnels uniquement)
 const getChatStats = async (req, res) => {
   try {
-    const { userType } = req.user;
+    const { type: userType } = req.user;
+
+    console.log('📊 Récupération stats chat:', { userType });
 
     // Seuls les professionnels peuvent voir les stats
     if (userType !== 'user') {
@@ -483,19 +527,24 @@ const getChatStats = async (req, res) => {
       WHERE derniere_vue >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
     `);
 
+    const finalStats = {
+      ...stats[0],
+      ...onlineStats[0]
+    };
+
+    console.log('✅ Stats chat récupérées:', finalStats);
+
     res.json({
       success: true,
-      data: {
-        ...stats[0],
-        ...onlineStats[0]
-      }
+      data: finalStats
     });
 
   } catch (error) {
     console.error('Erreur statistiques chat:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur serveur lors de la récupération des statistiques'
+      message: 'Erreur serveur lors de la récupération des statistiques',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -505,13 +554,17 @@ const getChatStats = async (req, res) => {
 // Vérifier l'accès à une conversation
 const checkConversationAccess = async (conversationId, userId, userType) => {
   try {
+    console.log('🔐 Vérification accès conversation:', { conversationId, userId, userType });
+
     if (userType === 'client') {
       // Les clients ne peuvent accéder qu'à leurs conversations
       const conversations = await query(
         'SELECT id FROM conversations WHERE id = ? AND client_id = ?',
         [conversationId, userId]
       );
-      return conversations.length > 0;
+      const hasAccess = conversations.length > 0;
+      console.log('🔐 Accès client:', hasAccess);
+      return hasAccess;
     }
 
     if (userType === 'user') {
@@ -520,9 +573,12 @@ const checkConversationAccess = async (conversationId, userId, userType) => {
         'SELECT role FROM users WHERE id = ? AND role IN (?, ?, ?)',
         [userId, 'admin', 'commercial', 'comptable']
       );
-      return users.length > 0;
+      const hasAccess = users.length > 0;
+      console.log('🔐 Accès professionnel:', hasAccess);
+      return hasAccess;
     }
 
+    console.log('🔐 Type utilisateur non reconnu');
     return false;
   } catch (error) {
     console.error('Erreur vérification accès conversation:', error);
