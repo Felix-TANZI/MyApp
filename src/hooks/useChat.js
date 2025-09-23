@@ -22,6 +22,12 @@ const useChat = (user, userType) => {
   // CORRECTION: Fonction pour obtenir le token et les headers d'auth
   const getAuthHeaders = useCallback(() => {
     const token = localStorage.getItem('accessToken');
+    
+    console.log('🔍 Récupération token pour API:', { 
+      hasToken: !!token, 
+      tokenLength: token ? token.length : 0 
+    });
+    
     if (!token) {
       throw new Error('Token d\'accès non trouvé');
     }
@@ -54,78 +60,135 @@ const useChat = (user, userType) => {
     return user.userType || 'client';
   }, [user, userType]);
 
-  // Initialisation du socket
+  // Initialisation du socket - VERSION CORRIGÉE
   const initializeSocket = useCallback(() => {
     const actualUserType = determineUserType();
     
-    if (!user || !actualUserType || socketRef.current?.connected) return;
+    if (!user || !actualUserType) {
+      console.log('⚠️ Pas d\'utilisateur pour WebSocket');
+      return;
+    }
 
-    console.log('🔌 Initialisation du socket chat...', { userId: user.id, userType: actualUserType });
+    // Vérifier la disponibilité du token avant de se connecter
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      console.log('⚠️ Token non disponible pour WebSocket, report de la connexion');
+      // Retry après 1 seconde
+      setTimeout(() => {
+        initializeSocket();
+      }, 1000);
+      return;
+    }
+
+    if (socketRef.current?.connected) {
+      console.log('🔌 Socket déjà connecté');
+      return;
+    }
+
+    console.log('🔌 Initialisation du socket chat...', { 
+      userId: user.id, 
+      userType: actualUserType,
+      hasToken: true,
+      tokenLength: token.length
+    });
 
     try {
       // Se connecter au namespace principal
-      socketRef.current = io(SOCKET_URL, {
-        transports: ['websocket', 'polling'],
-        autoConnect: false,
-        reconnection: true,
-        reconnectionDelay: 2000,
-        reconnectionDelayMax: 10000,
-        maxReconnectionAttempts: 5
-      });
+      socketRef.current = io(`${SOCKET_URL}/chat`, {
+  transports: ['websocket', 'polling'],
+  autoConnect: false,
+  reconnection: true,
+  reconnectionDelay: 2000,
+  reconnectionDelayMax: 10000,
+  maxReconnectionAttempts: 5
+});
 
       const socket = socketRef.current;
 
       // Événements de connexion
       socket.on('connect', () => {
-        console.log('✅ Chat connecté:', socket.id);
-        setIsConnected(true);
-        setError(null);
-        reconnectAttemptsRef.current = 0;
+  console.log('✅ Chat connecté:', socket.id);
+  console.log('🔍 Socket connecté - détails:', {
+    id: socket.id,
+    connected: socket.connected,
+    disconnected: socket.disconnected
+  });
+  
+  setIsConnected(true);
+  setError(null);
+  reconnectAttemptsRef.current = 0;
 
-        // CORRECTION: Authentification avec token et type d'utilisateur correct
-        const token = localStorage.getItem('accessToken');
-        if (token) {
-          console.log('🔐 Authentification chat:', { userType: actualUserType, hasToken: true });
-          
-          socket.emit('chat_authenticate', { 
-            token, 
-            userType: actualUserType 
-          });
-        } else {
-          console.error('❌ Aucun token disponible pour l\'authentification');
-          setError('Token d\'authentification manquant');
-        }
-      });
+  // Authentification avec vérification du token
+  const currentToken = localStorage.getItem('accessToken');
+  console.log('🔍 Récupération token pour WebSocket:', { 
+    hasToken: !!currentToken, 
+    tokenLength: currentToken ? currentToken.length : 0 
+  });
+  
+  if (currentToken) {
+    console.log('🔐 Authentification chat:', { 
+      userType: actualUserType, 
+      hasToken: true,
+      tokenStart: currentToken.substring(0, 20) + '...',
+      socketId: socket.id
+    });
+    
+    console.log('🚀 ÉMISSION chat_authenticate...');
+    socket.emit('chat_authenticate', { 
+      token: currentToken, 
+      userType: actualUserType 
+    });
+    console.log('✅ Événement chat_authenticate émis');
+    
+  } else {
+    console.error('❌ Token manquant au moment de l\'authentification');
+    setError('Token d\'authentification manquant');
+    socket.disconnect();
+  }
+});
 
-      socket.on('disconnect', (reason) => {
-        console.log('❌ Chat déconnecté:', reason);
-        setIsConnected(false);
-        setParticipants([]);
-        setTypingUsers([]);
-      });
+socket.on('disconnect', (reason) => {
+  console.log('❌ Chat déconnecté:', reason);
+  console.log('🔍 Détails déconnexion:', {
+    reason,
+    connected: socket.connected,
+    disconnected: socket.disconnected
+  });
+  setIsConnected(false);
+  setParticipants([]);
+  setTypingUsers([]);
+});
 
-      socket.on('connect_error', (error) => {
-        console.error('🔌 Erreur connexion chat:', error);
-        setError('Erreur de connexion au chat');
-        setIsConnected(false);
-        
-        reconnectAttemptsRef.current++;
-        if (reconnectAttemptsRef.current >= 5) {
-          setError('Impossible de se connecter au chat. Vérifiez votre connexion.');
-        }
-      });
+socket.on('connect_error', (error) => {
+  console.error('🔌 Erreur connexion chat:', error);
+  console.log('🔍 Détails erreur connexion:', {
+    message: error.message,
+    description: error.description,
+    context: error.context,
+    type: error.type
+  });
+  setError('Erreur de connexion au chat');
+  setIsConnected(false);
+  
+  reconnectAttemptsRef.current++;
+  if (reconnectAttemptsRef.current >= 5) {
+    setError('Impossible de se connecter au chat. Vérifiez votre connexion.');
+  }
+});
 
-      // Événements d'authentification
-      socket.on('chat_authenticated', (data) => {
-        console.log('🔐 Chat authentifié:', data);
-        setError(null);
-      });
+// Événements d'authentification avec debug
+socket.on('chat_authenticated', (data) => {
+  console.log('🔐 Chat authentifié:', data);
+  console.log('✅ AUTHENTIFICATION RÉUSSIE - données reçues:', data);
+  setError(null);
+});
 
-      socket.on('chat_auth_error', (error) => {
-        console.error('❌ Erreur auth chat:', error);
-        setError(`Erreur d'authentification: ${error.message || 'Token invalide'}`);
-        setIsConnected(false);
-      });
+socket.on('chat_auth_error', (error) => {
+  console.error('❌ Erreur auth chat:', error);
+  console.log('💥 ÉCHEC AUTHENTIFICATION - détails:', error);
+  setError(`Erreur d'authentification: ${error.message || 'Token invalide'}`);
+  setIsConnected(false);
+});
 
       // Événements de conversation
       socket.on('conversation_joined', (data) => {
@@ -659,12 +722,31 @@ const useChat = (user, userType) => {
     setError(null);
   }, []);
 
-  // Initialisation et nettoyage
+  // MODIFICATION CRITIQUE: Retarder l'initialisation jusqu'à ce que le token soit disponible
   useEffect(() => {
     if (user && determineUserType()) {
       console.log('🚀 Initialisation chat pour:', { userId: user.id, userType: determineUserType() });
-      initializeSocket();
-      loadConversations();
+      
+      // Vérifier si le token est déjà disponible
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        // Token disponible, initialiser immédiatement
+        initializeSocket();
+        loadConversations();
+      } else {
+        // Token pas encore disponible, attendre un peu
+        console.log('⏳ En attente du token...');
+        setTimeout(() => {
+          if (localStorage.getItem('accessToken')) {
+            console.log('🔄 Token disponible, initialisation différée');
+            initializeSocket();
+            loadConversations();
+          } else {
+            console.log('❌ Token toujours indisponible après délai');
+            setError('Token d\'authentification indisponible');
+          }
+        }, 1000);
+      }
     }
 
     return () => {

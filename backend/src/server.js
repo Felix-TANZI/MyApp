@@ -83,25 +83,28 @@ if (notificationService || chatService) {
     console.log('🔗 Socket.IO configuré avec succès');
 
     // CORRECTION: Initialiser les services disponibles avec gestion d'erreur
-    if (notificationService) {
-      try {
-        notificationService.initialize(io);
-        console.log('🔔 Service de notifications initialisé avec succès');
-      } catch (error) {
-        console.error('❌ Erreur initialisation service notifications:', error);
-        notificationService = null;
-      }
-    }
+if (notificationService) {
+  try {
+    // Notifications sur le namespace par défaut
+    notificationService.initialize(io);
+    console.log('🔔 Service de notifications initialisé avec succès');
+  } catch (error) {
+    console.error('❌ Erreur initialisation service notifications:', error);
+    notificationService = null;
+  }
+}
 
-    if (chatService) {
-      try {
-        chatService.initialize(io);
-        console.log('💬 Service de chat initialisé avec succès');
-      } catch (error) {
-        console.error('❌ Erreur initialisation service chat:', error);
-        chatService = null;
-      }
-    }
+if (chatService) {
+  try {
+    // Chat sur un namespace dédié
+    const chatNamespace = io.of('/chat');
+    chatService.initialize(chatNamespace);
+    console.log('💬 Service de chat initialisé avec succès');
+  } catch (error) {
+    console.error('❌ Erreur initialisation service chat:', error);
+    chatService = null;
+  }
+}
 
     // Gestion des connexions globales
     io.on('connection', (socket) => {

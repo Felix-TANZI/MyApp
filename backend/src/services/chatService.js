@@ -17,106 +17,161 @@ class ChatService {
 
   // Configuration des événements Socket.IO
   setupSocketEvents() {
-    this.io.on('connection', (socket) => {
-      console.log(`Nouvelle connexion chat: ${socket.id}`);
+  this.io.on('connection', (socket) => {
+    console.log(`Nouvelle connexion chat: ${socket.id}`);
 
-      // Authentification du socket
-      socket.on('chat_authenticate', async (data) => {
-        try {
-          await this.authenticateSocket(socket, data);
-        } catch (error) {
-          console.error('Erreur authentification socket chat:', error);
-          socket.emit('chat_auth_error', { message: error.message || 'Authentification échouée' });
-          socket.disconnect();
-        }
-      });
-
-      // Rejoindre une conversation
-      socket.on('join_conversation', async (data) => {
-        try {
-          await this.joinConversation(socket, data);
-        } catch (error) {
-          console.error('Erreur join conversation:', error);
-          socket.emit('error', { message: 'Impossible de rejoindre la conversation' });
-        }
-      });
-
-      // Quitter une conversation
-      socket.on('leave_conversation', async (data) => {
-        try {
-          await this.leaveConversation(socket, data);
-        } catch (error) {
-          console.error('Erreur leave conversation:', error);
-        }
-      });
-
-      // Envoyer un message
-      socket.on('send_message', async (data) => {
-        try {
-          await this.sendMessage(socket, data);
-        } catch (error) {
-          console.error('Erreur envoi message:', error);
-          socket.emit('error', { message: 'Erreur lors de l\'envoi du message' });
-        }
-      });
-
-      // Marquer des messages comme lus
-      socket.on('mark_messages_read', async (data) => {
-        try {
-          await this.markMessagesAsRead(socket, data);
-        } catch (error) {
-          console.error('Erreur marquage messages lus:', error);
-        }
-      });
-
-      // Indicateur de frappe
-      socket.on('typing_start', (data) => {
-        this.broadcastTyping(socket, data, true);
-      });
-
-      socket.on('typing_stop', (data) => {
-        this.broadcastTyping(socket, data, false);
-      });
-
-      // Déconnexion
-      socket.on('disconnect', () => {
-        this.handleDisconnect(socket);
-      });
+    // DEBUG: Logger tous les événements reçus
+    socket.onAny((eventName, ...args) => {
+      console.log(`🔍 Événement reçu sur ${socket.id}: ${eventName}`, args.length > 0 ? args[0] : 'sans données');
     });
-  }
+
+    // Authentification du socket
+    socket.on('chat_authenticate', async (data) => {
+      console.log(`🔐 ÉVÉNEMENT CHAT_AUTHENTICATE REÇU sur ${socket.id}:`, data);
+      try {
+        await this.authenticateSocket(socket, data);
+      } catch (error) {
+        console.error('Erreur authentification socket chat:', error);
+        socket.emit('chat_auth_error', { message: error.message || 'Authentification échouée' });
+        socket.disconnect();
+      }
+    });
+
+    // Rejoindre une conversation
+    socket.on('join_conversation', async (data) => {
+      console.log(`🏠 ÉVÉNEMENT JOIN_CONVERSATION REÇU sur ${socket.id}:`, data);
+      try {
+        await this.joinConversation(socket, data);
+      } catch (error) {
+        console.error('Erreur join conversation:', error);
+        socket.emit('error', { message: 'Impossible de rejoindre la conversation' });
+      }
+    });
+
+    // Quitter une conversation
+    socket.on('leave_conversation', async (data) => {
+      console.log(`👋 ÉVÉNEMENT LEAVE_CONVERSATION REÇU sur ${socket.id}:`, data);
+      try {
+        await this.leaveConversation(socket, data);
+      } catch (error) {
+        console.error('Erreur leave conversation:', error);
+      }
+    });
+
+    // Envoyer un message
+    socket.on('send_message', async (data) => {
+      console.log(`💬 ÉVÉNEMENT SEND_MESSAGE REÇU sur ${socket.id}:`, data);
+      try {
+        await this.sendMessage(socket, data);
+      } catch (error) {
+        console.error('Erreur envoi message:', error);
+        socket.emit('error', { message: 'Erreur lors de l\'envoi du message' });
+      }
+    });
+
+    // Marquer des messages comme lus
+    socket.on('mark_messages_read', async (data) => {
+      console.log(`✅ ÉVÉNEMENT MARK_MESSAGES_READ REÇU sur ${socket.id}:`, data);
+      try {
+        await this.markMessagesAsRead(socket, data);
+      } catch (error) {
+        console.error('Erreur marquage messages lus:', error);
+      }
+    });
+
+    // Indicateur de frappe
+    socket.on('typing_start', (data) => {
+      console.log(`⌨️ ÉVÉNEMENT TYPING_START REÇU sur ${socket.id}:`, data);
+      this.broadcastTyping(socket, data, true);
+    });
+
+    socket.on('typing_stop', (data) => {
+      console.log(`⏹️ ÉVÉNEMENT TYPING_STOP REÇU sur ${socket.id}:`, data);
+      this.broadcastTyping(socket, data, false);
+    });
+
+    // Événements de connexion/déconnexion
+    socket.on('disconnect', (reason) => {
+      console.log(`❌ Socket ${socket.id} déconnecté: ${reason}`);
+      this.handleDisconnect(socket);
+    });
+
+    // Gestion des erreurs de socket
+    socket.on('error', (error) => {
+      console.error(`❌ Erreur sur socket ${socket.id}:`, error);
+    });
+  });
+}
 
   // Authentifier un socket - CORRIGÉ
-  async authenticateSocket(socket, data) {
-    const { token, userType } = data;
+async authenticateSocket(socket, data) {
+  console.log('🔍 DÉBUT Authentification socket');
+  console.log('🔍 Données reçues complètes:', JSON.stringify(data, null, 2));
+  console.log('🔍 Type des données:', typeof data);
+  console.log('🔍 Clés disponibles:', Object.keys(data || {}));
+
+  const { token, userType } = data || {};
+  
+  console.log('🔍 Token extrait:', {
+    hasToken: !!token,
+    tokenType: typeof token,
+    tokenLength: token ? token.length : 0,
+    tokenStart: token ? token.substring(0, 50) + '...' : 'N/A',
+    userType: userType,
+    userTypeType: typeof userType
+  });
+  
+  if (!token) {
+    console.error('❌ TOKEN MANQUANT - Données reçues:', data);
+    throw new Error('Token manquant');
+  }
+
+  try {
+    // Vérifier le token JWT
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('🔐 Token décodé avec succès:', {
+      userId: decoded.userId,
+      userType: decoded.userType,
+      role: decoded.role,
+      iat: new Date(decoded.iat * 1000),
+      exp: new Date(decoded.exp * 1000)
+    });
     
-    if (!token) {
-      throw new Error('Token manquant');
-    }
+    let userId, actualUserType, userInfo;
 
-    try {
-      // Vérifier le token JWT
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      console.log('🔐 Token décodé:', { decoded, userType });
+    // Déterminer le type et l'ID utilisateur selon le token décodé
+    if (decoded.userType === 'client' || (userType === 'client' && decoded.userId)) {
+      // Client
+      userId = decoded.userId;
+      actualUserType = 'client';
       
-      let userId, actualUserType, userInfo;
-
-      // Déterminer le type et l'ID utilisateur selon le token décodé
-      if (decoded.userType === 'client' || (userType === 'client' && decoded.userId)) {
-        // Client
-        userId = decoded.userId;
-        actualUserType = 'client';
-        
-        const clients = await query(
-          'SELECT id, code_client, nom, prenom FROM clients WHERE id = ? AND statut = "actif"',
-          [userId]
-        );
-        userInfo = clients[0];
-        
-        if (!userInfo) {
-          throw new Error('Client non trouvé ou inactif');
-        }
-      } else if (decoded.userType === 'user' || (userType === 'user' && decoded.userId)) {
-        // Professionnel
+      const clients = await query(
+        'SELECT id, code_client, nom, prenom FROM clients WHERE id = ? AND statut = "actif"',
+        [userId]
+      );
+      userInfo = clients[0];
+      
+      if (!userInfo) {
+        throw new Error('Client non trouvé ou inactif');
+      }
+    } else if (decoded.userType === 'user' || (userType === 'user' && decoded.userId)) {
+      // Professionnel
+      userId = decoded.userId;
+      actualUserType = 'user';
+      
+      const users = await query(
+        'SELECT id, nom, prenom, role FROM users WHERE id = ? AND statut = "actif"',
+        [userId]
+      );
+      userInfo = users[0];
+      
+      if (!userInfo) {
+        throw new Error('Utilisateur non trouvé ou inactif');
+      }
+    } else {
+      // Fallback : essayer de déterminer automatiquement
+      if (decoded.role && ['admin', 'commercial', 'comptable'].includes(decoded.role)) {
+        // C'est un professionnel
         userId = decoded.userId;
         actualUserType = 'user';
         
@@ -125,71 +180,60 @@ class ChatService {
           [userId]
         );
         userInfo = users[0];
+      } else if (decoded.codeClient) {
+        // C'est un client
+        userId = decoded.userId;
+        actualUserType = 'client';
         
-        if (!userInfo) {
-          throw new Error('Utilisateur non trouvé ou inactif');
-        }
+        const clients = await query(
+          'SELECT id, code_client, nom, prenom FROM clients WHERE id = ? AND statut = "actif"',
+          [userId]
+        );
+        userInfo = clients[0];
       } else {
-        // Fallback : essayer de déterminer automatiquement
-        if (decoded.role && ['admin', 'commercial', 'comptable'].includes(decoded.role)) {
-          // C'est un professionnel
-          userId = decoded.userId;
-          actualUserType = 'user';
-          
-          const users = await query(
-            'SELECT id, nom, prenom, role FROM users WHERE id = ? AND statut = "actif"',
-            [userId]
-          );
-          userInfo = users[0];
-        } else if (decoded.codeClient) {
-          // C'est un client
-          userId = decoded.userId;
-          actualUserType = 'client';
-          
-          const clients = await query(
-            'SELECT id, code_client, nom, prenom FROM clients WHERE id = ? AND statut = "actif"',
-            [userId]
-          );
-          userInfo = clients[0];
-        } else {
-          throw new Error('Type d\'utilisateur indéterminé dans le token');
-        }
+        throw new Error('Type d\'utilisateur indéterminé dans le token');
       }
-
-      if (!userInfo) {
-        throw new Error('Utilisateur introuvable ou inactif');
-      }
-
-      // Stocker les infos dans le socket
-      socket.userId = userId;
-      socket.userType = actualUserType;
-      socket.userInfo = userInfo;
-      socket.authenticated = true;
-
-      // Ajouter à la liste des connectés
-      this.connectedUsers.set(`${actualUserType}_${userId}`, {
-        socketId: socket.id,
-        userType: actualUserType,
-        userId: userId,
-        userInfo,
-        connectedAt: new Date(),
-        socket: socket
-      });
-
-      // Confirmer l'authentification
-      socket.emit('chat_authenticated', {
-        userId,
-        userType: actualUserType,
-        userInfo
-      });
-
-      console.log(`✅ Chat authentifié: ${actualUserType} ${userInfo.nom} ${userInfo.prenom || ''} (${socket.id})`);
-
-    } catch (jwtError) {
-      console.error('Erreur JWT:', jwtError);
-      throw new Error('Token invalide ou expiré');
     }
+
+    if (!userInfo) {
+      throw new Error('Utilisateur introuvable ou inactif');
+    }
+
+    // Stocker les infos dans le socket
+    socket.userId = userId;
+    socket.userType = actualUserType;
+    socket.userInfo = userInfo;
+    socket.authenticated = true;
+
+    // Ajouter à la liste des connectés
+    this.connectedUsers.set(`${actualUserType}_${userId}`, {
+      socketId: socket.id,
+      userType: actualUserType,
+      userId: userId,
+      userInfo,
+      connectedAt: new Date(),
+      socket: socket
+    });
+
+    // Confirmer l'authentification
+    socket.emit('chat_authenticated', {
+      userId,
+      userType: actualUserType,
+      userInfo
+    });
+
+    console.log(`✅ Chat authentifié: ${actualUserType} ${userInfo.nom} ${userInfo.prenom || ''} (${socket.id})`);
+
+  } catch (jwtError) {
+    console.error('❌ Erreur JWT détaillée:', {
+      name: jwtError.name,
+      message: jwtError.message,
+      expiredAt: jwtError.expiredAt,
+      token: token ? token.substring(0, 50) + '...' : 'N/A'
+    });
+    throw new Error('Token invalide ou expiré: ' + jwtError.message);
   }
+}
 
   // Rejoindre une conversation - AMÉLIORÉ
   async joinConversation(socket, data) {

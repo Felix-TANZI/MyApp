@@ -58,9 +58,6 @@ const loginProfessional = async (req, res) => {
       nom: user.nom,
       prenom: user.prenom,
       pseudo: user.pseudo,
-      // Ajouter tous les champs nécessaires pour le chat
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24h
     };
 
     const { accessToken, refreshToken } = generateTokens(payload);
@@ -158,8 +155,6 @@ const loginClient = async (req, res) => {
       entreprise: client.entreprise,
       typeClient: client.type_client,
       // Ajouter tous les champs nécessaires
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24h
     };
 
     const { accessToken, refreshToken } = generateTokens(payload);
