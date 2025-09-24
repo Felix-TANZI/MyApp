@@ -4,174 +4,171 @@ const jwt = require('jsonwebtoken');
 class ChatService {
   constructor() {
     this.io = null;
-    this.connectedUsers = new Map(); // userId -> { socketId, userType, userInfo }
-    this.conversationRooms = new Map(); // conversationId -> Set of socketIds
+    this.connectedUsers = new Map();
+    this.conversationRooms = new Map();
+    this.socketUserMap = new Map();
   }
 
-  // Initialiser le service avec Socket.IO
   initialize(io) {
     this.io = io;
     this.setupSocketEvents();
-    console.log('✅ Service de chat initialisé');
-  }
-
-  // Configuration des événements Socket.IO
-  setupSocketEvents() {
-  this.io.on('connection', (socket) => {
-    console.log(`Nouvelle connexion chat: ${socket.id}`);
-
-    // Logger tous les événements reçus
-    socket.onAny((eventName, ...args) => {
-      console.log(`🔍 Événement reçu sur ${socket.id}: ${eventName}`, args.length > 0 ? args[0] : 'sans données');
-    });
-
-    // Authentification du socket
-    socket.on('chat_authenticate', async (data) => {
-      console.log(`🔐 ÉVÉNEMENT CHAT_AUTHENTICATE REÇU sur ${socket.id}:`, data);
-      try {
-        await this.authenticateSocket(socket, data);
-      } catch (error) {
-        console.error('Erreur authentification socket chat:', error);
-        socket.emit('chat_auth_error', { message: error.message || 'Authentification échouée' });
-        socket.disconnect();
-      }
-    });
-
-    // Rejoindre une conversation
-    socket.on('join_conversation', async (data) => {
-      console.log(`🏠 ÉVÉNEMENT JOIN_CONVERSATION REÇU sur ${socket.id}:`, data);
-      try {
-        await this.joinConversation(socket, data);
-      } catch (error) {
-        console.error('Erreur join conversation:', error);
-        socket.emit('error', { message: 'Impossible de rejoindre la conversation' });
-      }
-    });
-
-    // Quitter une conversation
-    socket.on('leave_conversation', async (data) => {
-      console.log(`👋 ÉVÉNEMENT LEAVE_CONVERSATION REÇU sur ${socket.id}:`, data);
-      try {
-        await this.leaveConversation(socket, data);
-      } catch (error) {
-        console.error('Erreur leave conversation:', error);
-      }
-    });
-
-    // Envoyer un message
-    socket.on('send_message', async (data) => {
-      console.log(`💬 ÉVÉNEMENT SEND_MESSAGE REÇU sur ${socket.id}:`, data);
-      try {
-        await this.sendMessage(socket, data);
-      } catch (error) {
-        console.error('Erreur envoi message:', error);
-        socket.emit('error', { message: 'Erreur lors de l\'envoi du message' });
-      }
-    });
-
-    // Marquer des messages comme lus
-    socket.on('mark_messages_read', async (data) => {
-      console.log(`✅ ÉVÉNEMENT MARK_MESSAGES_READ REÇU sur ${socket.id}:`, data);
-      try {
-        await this.markMessagesAsRead(socket, data);
-      } catch (error) {
-        console.error('Erreur marquage messages lus:', error);
-      }
-    });
-
-    // Indicateur de frappe
-    socket.on('typing_start', (data) => {
-      console.log(`⌨️ ÉVÉNEMENT TYPING_START REÇU sur ${socket.id}:`, data);
-      this.broadcastTyping(socket, data, true);
-    });
-
-    socket.on('typing_stop', (data) => {
-      console.log(`⏹️ ÉVÉNEMENT TYPING_STOP REÇU sur ${socket.id}:`, data);
-      this.broadcastTyping(socket, data, false);
-    });
-
-    // Événements de connexion/déconnexion
-    socket.on('disconnect', (reason) => {
-      console.log(`❌ Socket ${socket.id} déconnecté: ${reason}`);
-      this.handleDisconnect(socket);
-    });
-
-    // Gestion des erreurs de socket
-    socket.on('error', (error) => {
-      console.error(`❌ Erreur sur socket ${socket.id}:`, error);
-    });
-  });
-}
-
-  // Authentifier un socket
-async authenticateSocket(socket, data) {
-  console.log('🔍 DÉBUT Authentification socket');
-  console.log('🔍 Données reçues complètes:', JSON.stringify(data, null, 2));
-  console.log('🔍 Type des données:', typeof data);
-  console.log('🔍 Clés disponibles:', Object.keys(data || {}));
-
-  const { token, userType } = data || {};
-  
-  console.log('🔍 Token extrait:', {
-    hasToken: !!token,
-    tokenType: typeof token,
-    tokenLength: token ? token.length : 0,
-    tokenStart: token ? token.substring(0, 50) + '...' : 'N/A',
-    userType: userType,
-    userTypeType: typeof userType
-  });
-  
-  if (!token) {
-    console.error('❌ TOKEN MANQUANT - Données reçues:', data);
-    throw new Error('Token manquant');
-  }
-
-  try {
-    // Vérifier le token JWT
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('🔐 Token décodé avec succès:', {
-      userId: decoded.userId,
-      userType: decoded.userType,
-      role: decoded.role,
-      iat: new Date(decoded.iat * 1000),
-      exp: new Date(decoded.exp * 1000)
-    });
     
-    let userId, actualUserType, userInfo;
+    setInterval(() => {
+      this.cleanupInactiveConnections();
+    }, 60000);
+    
+    console.log('✅ Service de chat initialisé avec nettoyage automatique');
+  }
 
-    // Déterminer le type et l'ID utilisateur selon le token décodé
-    if (decoded.userType === 'client' || (userType === 'client' && decoded.userId)) {
-      // Client
-      userId = decoded.userId;
-      actualUserType = 'client';
+  setupSocketEvents() {
+    this.io.on('connection', (socket) => {
+      console.log(`🔌 Nouvelle connexion chat: ${socket.id}`);
+
+      const authTimeout = setTimeout(() => {
+        if (!socket.authenticated) {
+          console.log(`⏰ Timeout d'authentification pour ${socket.id}`);
+          socket.emit('chat_auth_error', { message: 'Timeout d\'authentification' });
+          socket.disconnect();
+        }
+      }, 30000);
+
+      socket.onAny((eventName, ...args) => {
+        console.log(`📨 [${socket.id}] Événement: ${eventName}`, 
+          args.length > 0 ? JSON.stringify(args[0]).substring(0, 200) : 'sans données'
+        );
+      });
+
+      socket.on('chat_authenticate', async (data) => {
+        console.log(`🔐 Tentative d'authentification pour ${socket.id}`);
+        clearTimeout(authTimeout);
+        
+        try {
+          await this.authenticateSocket(socket, data);
+        } catch (error) {
+          console.error(`❌ Erreur authentification ${socket.id}:`, error.message);
+          socket.emit('chat_auth_error', { message: error.message || 'Authentification échouée' });
+          socket.disconnect();
+        }
+      });
+
+      socket.on('join_conversation', async (data) => {
+        if (!socket.authenticated) {
+          socket.emit('error', { message: 'Socket non authentifié' });
+          return;
+        }
+        
+        console.log(`🏠 [${socket.id}] Tentative de rejoindre conversation:`, data);
+        try {
+          await this.joinConversation(socket, data);
+        } catch (error) {
+          console.error(`❌ [${socket.id}] Erreur join conversation:`, error);
+          socket.emit('error', { message: 'Impossible de rejoindre la conversation' });
+        }
+      });
+
+      socket.on('leave_conversation', async (data) => {
+        if (!socket.authenticated) return;
+        
+        console.log(`👋 [${socket.id}] Tentative de quitter conversation:`, data);
+        try {
+          await this.leaveConversation(socket, data);
+        } catch (error) {
+          console.error(`❌ [${socket.id}] Erreur leave conversation:`, error);
+        }
+      });
+
+      socket.on('send_message', async (data) => {
+        if (!socket.authenticated) {
+          socket.emit('error', { message: 'Socket non authentifié' });
+          return;
+        }
+        
+        console.log(`💬 [${socket.id}] Tentative d'envoi message`);
+        try {
+          await this.sendMessage(socket, data);
+        } catch (error) {
+          console.error(`❌ [${socket.id}] Erreur envoi message:`, error);
+          socket.emit('error', { message: 'Erreur lors de l\'envoi du message' });
+        }
+      });
+
+      socket.on('mark_messages_read', async (data) => {
+        if (!socket.authenticated) return;
+        
+        console.log(`✅ [${socket.id}] Marquage messages lus:`, data);
+        try {
+          await this.markMessagesAsRead(socket, data);
+        } catch (error) {
+          console.error(`❌ [${socket.id}] Erreur marquage messages lus:`, error);
+        }
+      });
+
+      socket.on('typing_start', (data) => {
+        if (!socket.authenticated) return;
+        console.log(`⌨️ [${socket.id}] Début frappe:`, data);
+        this.broadcastTyping(socket, data, true);
+      });
+
+      socket.on('typing_stop', (data) => {
+        if (!socket.authenticated) return;
+        console.log(`⏹️ [${socket.id}] Fin frappe:`, data);
+        this.broadcastTyping(socket, data, false);
+      });
+
+      socket.on('ping', () => {
+        socket.emit('pong');
+      });
+
+      socket.on('disconnect', (reason) => {
+        console.log(`❌ [${socket.id}] Déconnecté: ${reason}`);
+        this.handleDisconnect(socket);
+        clearTimeout(authTimeout);
+      });
+
+      socket.on('error', (error) => {
+        console.error(`💥 [${socket.id}] Erreur socket:`, error);
+      });
+    });
+  }
+
+  async authenticateSocket(socket, data) {
+    console.log('🔍 Début authentification socket détaillée');
+    
+    const { token, userType } = data || {};
+    
+    if (!token) {
+      throw new Error('Token manquant');
+    }
+
+    if (!userType || !['user', 'client'].includes(userType)) {
+      throw new Error('Type d\'utilisateur invalide');
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('🔐 Token vérifié:', {
+        userId: decoded.userId,
+        userType: decoded.userType,
+        role: decoded.role,
+        exp: new Date(decoded.exp * 1000)
+      });
       
-      const clients = await query(
-        'SELECT id, code_client, nom, prenom FROM clients WHERE id = ? AND statut = "actif"',
-        [userId]
-      );
-      userInfo = clients[0];
-      
-      if (!userInfo) {
-        throw new Error('Client non trouvé ou inactif');
+      if (decoded.exp * 1000 <= Date.now()) {
+        throw new Error('Token expiré');
       }
-    } else if (decoded.userType === 'user' || (userType === 'user' && decoded.userId)) {
-      // Professionnel
-      userId = decoded.userId;
-      actualUserType = 'user';
-      
-      const users = await query(
-        'SELECT id, nom, prenom, role FROM users WHERE id = ? AND statut = "actif"',
-        [userId]
-      );
-      userInfo = users[0];
-      
-      if (!userInfo) {
-        throw new Error('Utilisateur non trouvé ou inactif');
-      }
-    } else {
-      // Fallback : essayer de déterminer automatiquement
-      if (decoded.role && ['admin', 'commercial', 'comptable'].includes(decoded.role)) {
-        // C'est un professionnel
+
+      let userId, actualUserType, userInfo;
+
+      if (userType === 'client' && decoded.userType === 'client') {
+        userId = decoded.userId;
+        actualUserType = 'client';
+        
+        const clients = await query(
+          'SELECT id, code_client, nom, prenom FROM clients WHERE id = ? AND statut = "actif" AND deleted_at IS NULL',
+          [userId]
+        );
+        userInfo = clients[0];
+      } else if (userType === 'user' && decoded.userType === 'user') {
         userId = decoded.userId;
         actualUserType = 'user';
         
@@ -180,297 +177,377 @@ async authenticateSocket(socket, data) {
           [userId]
         );
         userInfo = users[0];
-      } else if (decoded.codeClient) {
-        // C'est un client
-        userId = decoded.userId;
-        actualUserType = 'client';
-        
-        const clients = await query(
-          'SELECT id, code_client, nom, prenom FROM clients WHERE id = ? AND statut = "actif"',
-          [userId]
-        );
-        userInfo = clients[0];
       } else {
-        throw new Error('Type d\'utilisateur indéterminé dans le token');
+        throw new Error('Incohérence entre le type demandé et le token');
       }
+
+      if (!userInfo) {
+        throw new Error('Utilisateur non trouvé ou inactif');
+      }
+
+      const existingUserKey = `${actualUserType}_${userId}`;
+      const existingConnection = this.connectedUsers.get(existingUserKey);
+      
+      if (existingConnection && existingConnection.socketId !== socket.id) {
+        console.log(`🔄 Déconnexion ancienne session pour ${userInfo.nom}`);
+        const oldSocket = this.io.sockets.sockets.get(existingConnection.socketId);
+        if (oldSocket) {
+          oldSocket.emit('session_replaced', { message: 'Nouvelle connexion détectée' });
+          oldSocket.disconnect();
+        }
+      }
+
+      socket.userId = userId;
+      socket.userType = actualUserType;
+      socket.userInfo = userInfo;
+      socket.authenticated = true;
+      socket.authenticatedAt = new Date();
+
+      const userKey = `${actualUserType}_${userId}`;
+      this.connectedUsers.set(userKey, {
+        socketId: socket.id,
+        userType: actualUserType,
+        userId: userId,
+        userInfo,
+        connectedAt: new Date(),
+        lastActivity: new Date(),
+        socket: socket
+      });
+
+      this.socketUserMap.set(socket.id, {
+        userId,
+        userType: actualUserType,
+        userKey
+      });
+
+      socket.emit('chat_authenticated', {
+        userId,
+        userType: actualUserType,
+        userInfo,
+        connectedAt: new Date()
+      });
+
+      console.log(`✅ Chat authentifié: ${actualUserType} ${userInfo.nom} ${userInfo.prenom || ''} (${socket.id})`);
+
+    } catch (jwtError) {
+      console.error('❌ Erreur JWT:', {
+        name: jwtError.name,
+        message: jwtError.message,
+        expiredAt: jwtError.expiredAt
+      });
+      throw new Error('Token invalide: ' + jwtError.message);
     }
-
-    if (!userInfo) {
-      throw new Error('Utilisateur introuvable ou inactif');
-    }
-
-    // Stocker les infos dans le socket
-    socket.userId = userId;
-    socket.userType = actualUserType;
-    socket.userInfo = userInfo;
-    socket.authenticated = true;
-
-    // Ajouter à la liste des connectés
-    this.connectedUsers.set(`${actualUserType}_${userId}`, {
-      socketId: socket.id,
-      userType: actualUserType,
-      userId: userId,
-      userInfo,
-      connectedAt: new Date(),
-      socket: socket
-    });
-
-    // Confirmer l'authentification
-    socket.emit('chat_authenticated', {
-      userId,
-      userType: actualUserType,
-      userInfo
-    });
-
-    console.log(`✅ Chat authentifié: ${actualUserType} ${userInfo.nom} ${userInfo.prenom || ''} (${socket.id})`);
-
-  } catch (jwtError) {
-    console.error('❌ Erreur JWT détaillée:', {
-      name: jwtError.name,
-      message: jwtError.message,
-      expiredAt: jwtError.expiredAt,
-      token: token ? token.substring(0, 50) + '...' : 'N/A'
-    });
-    throw new Error('Token invalide ou expiré: ' + jwtError.message);
   }
-}
 
-  // Rejoindre une conversation
   async joinConversation(socket, data) {
     const { conversationId } = data;
     const { userId, userType } = socket;
 
-    if (!socket.authenticated) {
-      socket.emit('error', { message: 'Socket non authentifié' });
+    if (!socket.authenticated || !conversationId) {
+      socket.emit('error', { message: 'Paramètres invalides' });
       return;
     }
 
-    // Vérifier les permissions
+    console.log(`🏠 ${socket.userInfo.nom} tente de rejoindre conversation ${conversationId}`);
+
     const hasAccess = await this.checkConversationAccess(conversationId, userId, userType);
     if (!hasAccess) {
+      console.log(`❌ Accès refusé pour ${socket.userInfo.nom} à la conversation ${conversationId}`);
       socket.emit('error', { message: 'Accès non autorisé à cette conversation' });
       return;
     }
 
-    // Rejoindre la room
-    socket.join(`conversation_${conversationId}`);
+    const conversations = await query('SELECT id, statut FROM conversations WHERE id = ?', [conversationId]);
+    if (conversations.length === 0) {
+      socket.emit('error', { message: 'Conversation introuvable' });
+      return;
+    }
+
+    const conversation = conversations[0];
+    console.log(`✅ Accès autorisé à la conversation ${conversationId} (statut: ${conversation.statut})`);
+
+    const roomName = `conversation_${conversationId}`;
+    socket.join(roomName);
     
-    // Ajouter à la liste des participants
     if (!this.conversationRooms.has(conversationId)) {
       this.conversationRooms.set(conversationId, new Set());
     }
     this.conversationRooms.get(conversationId).add(socket.id);
 
-    // Mettre à jour le statut en ligne
     await this.updateParticipantStatus(conversationId, userId, userType, true, socket.id);
 
-    // Notifier les autres participants
-    socket.to(`conversation_${conversationId}`).emit('user_joined', {
+    const onlineParticipants = await this.getOnlineParticipants(conversationId);
+
+    socket.to(roomName).emit('user_joined', {
       userId,
       userType,
       userInfo: socket.userInfo
     });
 
-    // Envoyer la liste des participants en ligne
-    const onlineParticipants = await this.getOnlineParticipants(conversationId);
     socket.emit('conversation_joined', {
       conversationId,
-      onlineParticipants
+      onlineParticipants,
+      conversationStatus: conversation.statut
     });
 
-    console.log(`✅ ${userType} ${socket.userInfo.nom} a rejoint la conversation ${conversationId}`);
+    console.log(`✅ ${socket.userInfo.nom} a rejoint la conversation ${conversationId} avec ${onlineParticipants.length} participants`);
   }
 
-  // Quitter une conversation
   async leaveConversation(socket, data) {
     const { conversationId } = data;
     const { userId, userType } = socket;
 
-    if (!socket.authenticated) return;
+    if (!socket.authenticated || !conversationId) return;
 
-    // Quitter la room
-    socket.leave(`conversation_${conversationId}`);
+    console.log(`👋 ${socket.userInfo.nom} quitte la conversation ${conversationId}`);
+
+    const roomName = `conversation_${conversationId}`;
+    socket.leave(roomName);
     
-    // Retirer de la liste des participants
     if (this.conversationRooms.has(conversationId)) {
       this.conversationRooms.get(conversationId).delete(socket.id);
+      
+      if (this.conversationRooms.get(conversationId).size === 0) {
+        this.conversationRooms.delete(conversationId);
+      }
     }
 
-    // Mettre à jour le statut hors ligne
     await this.updateParticipantStatus(conversationId, userId, userType, false);
 
-    // Notifier les autres participants
-    socket.to(`conversation_${conversationId}`).emit('user_left', {
+    socket.to(roomName).emit('user_left', {
       userId,
       userType,
       userInfo: socket.userInfo
     });
 
-    console.log(`👋 ${userType} ${socket.userInfo.nom} a quitté la conversation ${conversationId}`);
+    console.log(`✅ ${socket.userInfo.nom} a quitté la conversation ${conversationId}`);
   }
 
-  // Envoyer un message
+  // CORRECTION PRINCIPALE : Correction de l'erreur Socket.IO rooms
   async sendMessage(socket, data) {
     const { conversationId, message, type = 'text' } = data;
     const { userId, userType, userInfo } = socket;
 
-    if (!socket.authenticated) {
-      socket.emit('error', { message: 'Socket non authentifié' });
+    if (!socket.authenticated || !conversationId || !message) {
+      socket.emit('error', { message: 'Paramètres invalides' });
       return;
     }
 
-    // Valider le message
-    if (!message || message.trim().length === 0) {
+    this.updateUserActivity(socket);
+
+    const cleanMessage = message.trim();
+    if (cleanMessage.length === 0) {
       socket.emit('error', { message: 'Message vide' });
       return;
     }
 
-    if (message.length > 2000) {
+    if (cleanMessage.length > 2000) {
       socket.emit('error', { message: 'Message trop long (max 2000 caractères)' });
       return;
     }
 
-    // Vérifier les permissions
     const hasAccess = await this.checkConversationAccess(conversationId, userId, userType);
     if (!hasAccess) {
       socket.emit('error', { message: 'Accès non autorisé' });
       return;
     }
 
+    if (userType === 'client') {
+      const conversations = await query(
+        'SELECT statut FROM conversations WHERE id = ?', 
+        [conversationId]
+      );
+      
+      if (conversations.length === 0 || conversations[0].statut !== 'active') {
+        socket.emit('error', { message: 'Cette conversation n\'est pas active' });
+        return;
+      }
+    }
+
     try {
-      // Sauvegarder le message en base
       const result = await query(`
         INSERT INTO messages (conversation_id, sender_type, sender_id, message, type_message)
         VALUES (?, ?, ?, ?, ?)
-      `, [conversationId, userType, userId, message.trim(), type]);
+      `, [conversationId, userType, userId, cleanMessage, type]);
 
-      // Mettre à jour l'activité de la conversation
       await query(`
         UPDATE conversations 
         SET derniere_activite = CURRENT_TIMESTAMP 
         WHERE id = ?
       `, [conversationId]);
 
-      // Récupérer le message créé avec les infos expéditeur
-      const newMessage = await query(`
+      const newMessages = await query(`
         SELECT * FROM vue_messages_chat WHERE id = ?
       `, [result.insertId]);
 
-      const messageData = newMessage[0];
+      if (newMessages.length === 0) {
+        throw new Error('Message créé mais non récupérable');
+      }
 
-      // Diffuser le message à tous les participants de la conversation
-      this.io.to(`conversation_${conversationId}`).emit('new_message', messageData);
+      const messageData = newMessages[0];
 
-      // Notifier les professionnels hors ligne si c'est un message client
+      console.log(`💬 Message sauvé: ID ${messageData.id} de ${userInfo.nom} dans conversation ${conversationId}`);
+
+      // CORRECTION : Utiliser this.io.to() directement
+      const roomName = `conversation_${conversationId}`;
+      this.io.to(roomName).emit('new_message', messageData);
+
+      console.log(`📡 Message diffusé à la room ${roomName}`);
+
+      // CORRECTION : Notification avec type valide
       if (userType === 'client') {
         await this.notifyOfflineProfessionals(conversationId, messageData);
       }
 
-      console.log(`💬 Message envoyé dans conversation ${conversationId} par ${userType} ${userInfo.nom}`);
+      // DEBUG : Vérifier les sockets dans la room
+      const socketsInRoom = await this.io.in(roomName).allSockets();
+      console.log(`🔍 Room ${roomName} contient ${socketsInRoom.size} sockets`);
 
     } catch (error) {
-      console.error('Erreur sauvegarde message:', error);
+      console.error(`❌ Erreur sauvegarde message:`, error);
       socket.emit('error', { message: 'Erreur lors de la sauvegarde du message' });
     }
   }
 
-  // Marquer les messages comme lus
   async markMessagesAsRead(socket, data) {
     const { conversationId } = data;
     const { userId, userType } = socket;
 
-    if (!socket.authenticated) return;
+    if (!socket.authenticated || !conversationId) return;
 
     try {
-      // Marquer comme lus
       await query('CALL MarquerMessagesCommeLus(?, ?, ?)', [conversationId, userType, userId]);
 
-      // Notifier les autres participants
-      socket.to(`conversation_${conversationId}`).emit('messages_read', {
+      console.log(`✅ Messages marqués comme lus pour ${socket.userInfo.nom} dans conversation ${conversationId}`);
+
+      const roomName = `conversation_${conversationId}`;
+      socket.to(roomName).emit('messages_read', {
         userId,
         userType,
         conversationId
       });
     } catch (error) {
-      console.error('Erreur marquage messages lus:', error);
+      console.error('❌ Erreur marquage messages lus:', error);
     }
   }
 
-  // Gérer l'indicateur de frappe
   broadcastTyping(socket, data, isTyping) {
     const { conversationId } = data;
     const { userId, userType, userInfo } = socket;
 
-    if (!socket.authenticated) return;
+    if (!socket.authenticated || !conversationId) return;
 
-    socket.to(`conversation_${conversationId}`).emit('user_typing', {
+    this.updateUserActivity(socket);
+
+    const roomName = `conversation_${conversationId}`;
+    socket.to(roomName).emit('user_typing', {
       userId,
       userType,
       userInfo,
       isTyping
     });
-  }
 
-  // Gérer la déconnexion
-  async handleDisconnect(socket) {
-    const { userId, userType } = socket;
-    
-    if (userId && userType) {
-      // Retirer de la liste des connectés
-      this.connectedUsers.delete(`${userType}_${userId}`);
-
-      // Mettre à jour le statut dans toutes les conversations
-      await query(`
-        UPDATE chat_participants 
-        SET en_ligne = FALSE, socket_id = NULL 
-        WHERE user_id = ? AND user_type = ?
-      `, [userId, userType]);
-
-      // Notifier toutes les conversations
-      for (const [conversationId, socketIds] of this.conversationRooms) {
-        if (socketIds.has(socket.id)) {
-          socket.to(`conversation_${conversationId}`).emit('user_left', {
-            userId,
-            userType,
-            userInfo: socket.userInfo
-          });
-          socketIds.delete(socket.id);
-        }
+    if (isTyping) {
+      const typingKey = `typing_${userId}_${conversationId}`;
+      
+      if (socket.typingTimeouts && socket.typingTimeouts[typingKey]) {
+        clearTimeout(socket.typingTimeouts[typingKey]);
       }
 
-      console.log(`👋 Chat déconnecté: ${userType} ${socket.userInfo?.nom} (${socket.id})`);
+      if (!socket.typingTimeouts) socket.typingTimeouts = {};
+      socket.typingTimeouts[typingKey] = setTimeout(() => {
+        socket.to(roomName).emit('user_typing', {
+          userId,
+          userType,
+          userInfo,
+          isTyping: false
+        });
+        delete socket.typingTimeouts[typingKey];
+      }, 5000);
     }
   }
 
-  // Vérifier l'accès à une conversation
+  async handleDisconnect(socket) {
+    const { userId, userType } = socket;
+    
+    if (!userId || !userType) return;
+
+    console.log(`❌ Déconnexion chat: ${socket.userInfo?.nom || 'Inconnu'} (${socket.id})`);
+
+    if (socket.typingTimeouts) {
+      Object.values(socket.typingTimeouts).forEach(timeout => clearTimeout(timeout));
+    }
+
+    const userKey = `${userType}_${userId}`;
+    this.connectedUsers.delete(userKey);
+    this.socketUserMap.delete(socket.id);
+
+    await query(`
+      UPDATE chat_participants 
+      SET en_ligne = FALSE, socket_id = NULL 
+      WHERE user_id = ? AND user_type = ?
+    `, [userId, userType]);
+
+    for (const [conversationId, socketIds] of this.conversationRooms.entries()) {
+      if (socketIds.has(socket.id)) {
+        const roomName = `conversation_${conversationId}`;
+        socket.to(roomName).emit('user_left', {
+          userId,
+          userType,
+          userInfo: socket.userInfo
+        });
+        socketIds.delete(socket.id);
+
+        if (socketIds.size === 0) {
+          this.conversationRooms.delete(conversationId);
+        }
+      }
+    }
+
+    console.log(`🧹 Nettoyage terminé pour ${socket.userInfo?.nom || socket.id}`);
+  }
+
+  updateUserActivity(socket) {
+    const userKey = this.socketUserMap.get(socket.id)?.userKey;
+    if (userKey && this.connectedUsers.has(userKey)) {
+      const userData = this.connectedUsers.get(userKey);
+      userData.lastActivity = new Date();
+      this.connectedUsers.set(userKey, userData);
+    }
+  }
+
   async checkConversationAccess(conversationId, userId, userType) {
     try {
-      // Les clients ne peuvent accéder qu'à leurs conversations
+      console.log(`🔐 Vérification accès: conversation ${conversationId}, user ${userId} (${userType})`);
+
       if (userType === 'client') {
         const conversations = await query(
           'SELECT id FROM conversations WHERE id = ? AND client_id = ?',
           [conversationId, userId]
         );
-        return conversations.length > 0;
+        const hasAccess = conversations.length > 0;
+        console.log(`🔐 Client ${userId}: ${hasAccess ? 'AUTORITÉ' : 'REFUSÉ'}`);
+        return hasAccess;
       }
 
-      // Les professionnels peuvent accéder à toutes les conversations
       if (userType === 'user') {
         const users = await query(
-          'SELECT role FROM users WHERE id = ? AND role IN (?, ?, ?)',
+          'SELECT id, role FROM users WHERE id = ? AND role IN (?, ?, ?) AND statut = "actif"',
           [userId, 'admin', 'commercial', 'comptable']
         );
-        return users.length > 0;
+        const hasAccess = users.length > 0;
+        console.log(`🔐 Professionnel ${userId}: ${hasAccess ? 'AUTORITÉ' : 'REFUSÉ'}`);
+        return hasAccess;
       }
 
+      console.log(`🔐 Type utilisateur non reconnu: ${userType}`);
       return false;
     } catch (error) {
-      console.error('Erreur vérification accès conversation:', error);
+      console.error('❌ Erreur vérification accès conversation:', error);
       return false;
     }
   }
 
-  // Mettre à jour le statut d'un participant
   async updateParticipantStatus(conversationId, userId, userType, isOnline, socketId = null) {
     try {
       await query(`
@@ -481,12 +558,13 @@ async authenticateSocket(socket, data) {
         socket_id = VALUES(socket_id),
         derniere_vue = CURRENT_TIMESTAMP
       `, [conversationId, userType, userId, isOnline, socketId]);
+
+      console.log(`👥 Statut participant mis à jour: ${userType} ${userId} -> ${isOnline ? 'EN LIGNE' : 'HORS LIGNE'}`);
     } catch (error) {
-      console.error('Erreur mise à jour statut participant:', error);
+      console.error('❌ Erreur mise à jour statut participant:', error);
     }
   }
 
-  // Récupérer les participants en ligne
   async getOnlineParticipants(conversationId) {
     try {
       const participants = await query(`
@@ -515,17 +593,16 @@ async authenticateSocket(socket, data) {
 
       return participants;
     } catch (error) {
-      console.error('Erreur récupération participants:', error);
+      console.error('❌ Erreur récupération participants:', error);
       return [];
     }
   }
 
-  // Notifier les professionnels hors ligne
+  // CORRECTION : Type de notification valide
   async notifyOfflineProfessionals(conversationId, messageData) {
     try {
-      // Récupérer les professionnels hors ligne
       const offlineProfessionals = await query(`
-        SELECT DISTINCT u.id
+        SELECT DISTINCT u.id, u.nom, u.prenom
         FROM users u
         WHERE u.role IN ('admin', 'commercial', 'comptable')
         AND u.statut = 'actif'
@@ -538,14 +615,20 @@ async authenticateSocket(socket, data) {
         )
       `, [conversationId]);
 
-      // Créer des notifications pour chaque professionnel hors ligne
+      console.log(`📧 ${offlineProfessionals.length} professionnels hors ligne à notifier`);
+
       for (const professional of offlineProfessionals) {
+        const shortMessage = messageData.message.length > 100 
+          ? messageData.message.substring(0, 100) + '...' 
+          : messageData.message;
+
+        // CORRECTION : Utiliser un type existant dans la base
         await query(`
           INSERT INTO notifications_users (user_id, type, titre, message, data)
-          VALUES (?, 'nouveau_message_chat', 'Nouveau message de chat', ?, ?)
+          VALUES (?, 'facture_nouvelle', 'Nouveau message de chat', ?, ?)
         `, [
           professional.id,
-          `Message de ${messageData.sender_nom} ${messageData.sender_prenom}: ${messageData.message.substring(0, 100)}${messageData.message.length > 100 ? '...' : ''}`,
+          `Message de ${messageData.sender_nom} ${messageData.sender_prenom}: ${shortMessage}`,
           JSON.stringify({
             conversation_id: conversationId,
             message_id: messageData.id,
@@ -555,11 +638,10 @@ async authenticateSocket(socket, data) {
         ]);
       }
     } catch (error) {
-      console.error('Erreur notification professionnels hors ligne:', error);
+      console.error('❌ Erreur notification professionnels hors ligne:', error);
     }
   }
 
-  // Obtenir les statistiques de connexion
   getConnectionStats() {
     const users = Array.from(this.connectedUsers.values());
     const clients = users.filter(u => u.userType === 'client');
@@ -569,46 +651,84 @@ async authenticateSocket(socket, data) {
       totalConnected: this.connectedUsers.size,
       connectedClients: clients.length,
       connectedProfessionals: professionals.length,
-      activeConversations: this.conversationRooms.size
+      activeConversations: this.conversationRooms.size,
+      clientsList: clients.map(c => c.userInfo.nom),
+      professionalsList: professionals.map(p => `${p.userInfo.prenom} ${p.userInfo.nom} (${p.userInfo.role})`)
     };
   }
 
-  // Diffuser un message système à tous les connectés
-  broadcastSystemMessage(message) {
+  broadcastSystemMessage(message, level = 'info') {
     if (this.io) {
+      console.log(`📢 Diffusion message système: ${message}`);
       this.io.emit('system_message', {
         message,
+        level,
         timestamp: new Date()
       });
     }
   }
 
-  // Fermer une connexion spécifique
-  disconnectUser(userType, userId) {
+  disconnectUser(userType, userId, reason = 'Déconnexion administrative') {
     const userKey = `${userType}_${userId}`;
     const user = this.connectedUsers.get(userKey);
     
     if (user && user.socket) {
+      console.log(`🔌 Déconnexion forcée: ${user.userInfo.nom} (${reason})`);
+      user.socket.emit('forced_disconnect', { reason });
       user.socket.disconnect(true);
       this.connectedUsers.delete(userKey);
     }
   }
 
-  // Nettoyer les connexions inactives
   cleanupInactiveConnections() {
+    const now = Date.now();
+    let cleanedCount = 0;
+
     for (const [userKey, userData] of this.connectedUsers.entries()) {
-      const timeDiff = Date.now() - userData.connectedAt.getTime();
+      const inactiveTime = now - userData.lastActivity.getTime();
       
-      // Déconnecter après 24 heures d'inactivité
-      if (timeDiff > 24 * 60 * 60 * 1000) {
-        this.disconnectUser(userData.userType, userData.userId);
-        console.log(`🧹 Connexion nettoyée: ${userKey}`);
+      if (inactiveTime > 30 * 60 * 1000) {
+        console.log(`🧹 Nettoyage connexion inactive: ${userData.userInfo.nom} (${Math.round(inactiveTime / 60000)} min)`);
+        this.disconnectUser(userData.userType, userData.userId, 'Inactivité prolongée');
+        cleanedCount++;
       }
     }
+
+    if (cleanedCount > 0) {
+      console.log(`🧹 ${cleanedCount} connexions inactives nettoyées`);
+    }
+
+    let roomsCleaned = 0;
+    for (const [conversationId, socketIds] of this.conversationRooms.entries()) {
+      if (socketIds.size === 0) {
+        this.conversationRooms.delete(conversationId);
+        roomsCleaned++;
+      }
+    }
+
+    if (roomsCleaned > 0) {
+      console.log(`🧹 ${roomsCleaned} rooms vides supprimées`);
+    }
+  }
+
+  getUserConnection(userType, userId) {
+    const userKey = `${userType}_${userId}`;
+    return this.connectedUsers.get(userKey) || null;
+  }
+
+  sendPrivateMessage(userType, userId, eventName, data) {
+    const userKey = `${userType}_${userId}`;
+    const user = this.connectedUsers.get(userKey);
+    
+    if (user && user.socket) {
+      user.socket.emit(eventName, data);
+      return true;
+    }
+    
+    return false;
   }
 }
 
-// Instance singleton
 const chatService = new ChatService();
 
 module.exports = chatService;
