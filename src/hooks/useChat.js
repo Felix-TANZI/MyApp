@@ -13,6 +13,10 @@ const useChat = (user, userType) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  
+  // États spécifiques à l'Assistant Amani
+  const [isAssistantActive, setIsAssistantActive] = useState(false);
+  const [assistantStats, setAssistantStats] = useState(null);
 
   const socketRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -20,7 +24,7 @@ const useChat = (user, userType) => {
   const currentUserRef = useRef(null);
   const currentUserTypeRef = useRef(null);
 
-  // CORRECTION MAJEURE : Mise à jour des refs sans déclencher de re-render
+  // Mise à jour des refs sans déclencher de re-render
   useEffect(() => {
     currentUserRef.current = user;
     currentUserTypeRef.current = userType;
@@ -58,7 +62,72 @@ const useChat = (user, userType) => {
     return user.userType || 'client';
   }, []);
 
-  // CORRECTION : Fonctions stables pour les événements Socket.IO
+  // Vérifier le statut de l'assistant
+  const checkAssistantStatus = useCallback(async () => {
+    const actualUserType = determineUserType();
+    
+    if (actualUserType !== 'client') {
+      return null;
+    }
+
+    try {
+      const headers = getAuthHeaders();
+      const response = await fetch('http://localhost:5000/api/assistant/status', {
+        headers
+      });
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de la vérification du statut assistant');
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setIsAssistantActive(data.data.active && data.data.enabled);
+        return data.data;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Erreur vérification statut assistant:', error);
+      setIsAssistantActive(false);
+      return null;
+    }
+  }, [determineUserType, getAuthHeaders]);
+
+  // Charger les stats de l'assistant (professionnels)
+  const loadAssistantStats = useCallback(async () => {
+    const actualUserType = determineUserType();
+    
+    if (actualUserType !== 'user') {
+      return null;
+    }
+
+    try {
+      const headers = getAuthHeaders();
+      const response = await fetch('http://localhost:5000/api/assistant/stats', {
+        headers
+      });
+
+      if (!response.ok) {
+        throw new Error('Erreur lors du chargement des statistiques assistant');
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setAssistantStats(data.data);
+        return data.data;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Erreur chargement stats assistant:', error);
+      return null;
+    }
+  }, [determineUserType, getAuthHeaders]);
+
+  // Fonctions stables pour les événements Socket.IO
   const handleNewMessage = useCallback((messageData) => {
     console.log('💬 Nouveau message reçu:', messageData);
     
@@ -82,7 +151,15 @@ const useChat = (user, userType) => {
           : conv
       )
     );
-  }, []);
+
+    // Si c'est un message de l'assistant, revérifier le statut après un délai
+    if (messageData.sender_type === 'assistant') {
+      console.log('🤖 Message assistant reçu, revérifier statut dans 5s');
+      setTimeout(() => {
+        checkAssistantStatus();
+      }, 5000);
+    }
+  }, [checkAssistantStatus]);
 
   const handleUserJoined = useCallback((data) => {
     console.log('👤 Utilisateur rejoint:', data);
@@ -137,7 +214,7 @@ const useChat = (user, userType) => {
     }
   }, []);
 
-  // CORRECTION : Initialisation socket une seule fois
+  // Initialisation socket
   const initializeSocket = useCallback(() => {
     if (socketRef.current?.connected || !currentUserRef.current) {
       console.log('🔌 Socket déjà connecté ou pas d\'utilisateur');
@@ -174,7 +251,7 @@ const useChat = (user, userType) => {
         transports: ['websocket', 'polling'],
         autoConnect: true,
         forceNew: true,
-        reconnection: false, // CORRECTION : Désactiver la reconnexion auto
+        reconnection: false,
         timeout: 20000
       });
 
@@ -185,6 +262,11 @@ const useChat = (user, userType) => {
         console.log('✅ Chat connecté:', socket.id);
         setIsConnected(true);
         setError(null);
+
+        // Vérifier le statut de l'assistant après connexion (clients uniquement)
+        if (actualUserType === 'client') {
+          checkAssistantStatus();
+        }
 
         // Authentification immédiate
         const currentToken = localStorage.getItem('accessToken');
@@ -204,6 +286,7 @@ const useChat = (user, userType) => {
         setIsConnected(false);
         setParticipants([]);
         setTypingUsers([]);
+        setIsAssistantActive(false);
       });
 
       socket.on('connect_error', (error) => {
@@ -234,6 +317,17 @@ const useChat = (user, userType) => {
       socket.on('new_message', handleNewMessage);
       socket.on('user_typing', handleUserTyping);
 
+      // Événements spécifiques à l'assistant
+      socket.on('assistant_message', (messageData) => {
+        console.log('🤖 Message assistant reçu:', messageData);
+        handleNewMessage(messageData);
+      });
+
+      socket.on('assistant_status_changed', (data) => {
+        console.log('🤖 Statut assistant changé:', data);
+        setIsAssistantActive(data.active && data.enabled);
+      });
+
       socket.on('messages_read', (data) => {
         console.log('✅ Messages lus:', data);
       });
@@ -245,7 +339,6 @@ const useChat = (user, userType) => {
 
       socket.on('session_replaced', (data) => {
         console.log('🔄 Session remplacée:', data.message);
-        // Ne pas se reconnecter automatiquement
       });
 
     } catch (error) {
@@ -253,9 +346,9 @@ const useChat = (user, userType) => {
       setError('Erreur lors de l\'initialisation du chat');
     }
 
-  }, [determineUserType, handleUserJoined, handleUserLeft, handleNewMessage, handleUserTyping]);
+  }, [determineUserType, handleUserJoined, handleUserLeft, handleNewMessage, handleUserTyping, checkAssistantStatus]);
 
-  // CORRECTION : Fermeture propre du socket
+  // Fermeture propre du socket
   const closeSocket = useCallback(() => {
     if (socketRef.current) {
       console.log('🔌 Fermeture du socket chat');
@@ -267,6 +360,7 @@ const useChat = (user, userType) => {
     setIsConnected(false);
     setParticipants([]);
     setTypingUsers([]);
+    setIsAssistantActive(false);
   }, []);
 
   const loadConversations = useCallback(async (page = 1, search = '', status = '') => {
@@ -600,9 +694,8 @@ const useChat = (user, userType) => {
     setError(null);
   }, []);
 
-  // CORRECTION : Effet d'initialisation unique et stable
+  // Effet d'initialisation unique
   useEffect(() => {
-    // Éviter les initialisations multiples
     if (isInitializedRef.current || !user) return;
     
     const actualUserType = determineUserType();
@@ -611,13 +704,11 @@ const useChat = (user, userType) => {
     console.log('🚀 Initialisation chat unique:', { userId: user.id, userType: actualUserType });
     isInitializedRef.current = true;
     
-    // Délai pour s'assurer que le token est disponible
     const initTimer = setTimeout(() => {
       initializeSocket();
       loadConversations();
     }, 1000);
 
-    // Cleanup lors du démontage du composant
     return () => {
       console.log('🧹 Nettoyage du hook chat');
       clearTimeout(initTimer);
@@ -627,7 +718,7 @@ const useChat = (user, userType) => {
       }
       isInitializedRef.current = false;
     };
-  }, [user?.id]); // Dépendance uniquement sur l'ID utilisateur
+  }, [user?.id, initializeSocket, loadConversations, closeSocket, determineUserType]);
 
   // Auto-marquage des messages comme lus
   useEffect(() => {
@@ -640,10 +731,21 @@ const useChat = (user, userType) => {
     }
   }, [currentConversation, isConnected, markMessagesAsRead]);
 
+  // Vérification périodique du statut de l'assistant (clients uniquement)
+  useEffect(() => {
+    if (!user || determineUserType() !== 'client') return;
+
+    const interval = setInterval(() => {
+      checkAssistantStatus();
+    }, 30000); // Vérifier toutes les 30 secondes
+
+    return () => clearInterval(interval);
+  }, [user, checkAssistantStatus, determineUserType]);
+
   const actualUserType = determineUserType();
 
   return {
-    // État
+    // État général
     isConnected,
     conversations,
     currentConversation,
@@ -654,7 +756,11 @@ const useChat = (user, userType) => {
     error,
     unreadCount,
 
-    // Actions
+    // États Assistant Amani
+    isAssistantActive,
+    assistantStats,
+
+    // Actions principales
     loadConversations,
     createConversation,
     joinConversation,
@@ -670,6 +776,10 @@ const useChat = (user, userType) => {
     loadChatStats,
     clearError,
     closeSocket,
+
+    // Actions Assistant
+    checkAssistantStatus,
+    loadAssistantStats,
 
     // Utilitaires
     isTyping: typingUsers.length > 0,

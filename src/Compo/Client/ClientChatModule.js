@@ -90,6 +90,10 @@ const ClientChatModule = ({ onBack }) => {
       return 'Vous';
     }
     
+    if (message.sender_type === 'assistant') {
+      return '🤖 Assistant Amani';
+    }
+    
     const role = message.sender_role;
     const roleLabels = {
       'admin': '👑 Administrateur',
@@ -107,12 +111,19 @@ const ClientChatModule = ({ onBack }) => {
         <h2>Contactez notre équipe</h2>
         <p>
           Notre équipe est là pour vous aider avec toutes vos questions concernant 
-          vos factures, votre compte, ou tout autre besoin.
+          vos factures, votre compte, ou tout autre besoin. 
+          <br/><br/>
+          <strong>🤖 Assistant Amani</strong> peut vous répondre immédiatement 
+          en attendant qu'un membre de notre équipe soit disponible.
         </p>
         <div className="welcome-features">
           <div className="feature">
             <span className="feature-icon">⚡</span>
             <span>Réponse rapide</span>
+          </div>
+          <div className="feature">
+            <span className="feature-icon">🤖</span>
+            <span>Assistant IA 24/7</span>
           </div>
           <div className="feature">
             <span className="feature-icon">🏨</span>
@@ -151,8 +162,8 @@ const ClientChatModule = ({ onBack }) => {
           </div>
         </div>
 
-        {/* Participants en ligne */}
-        {chat.participants.length > 0 && (
+        {/* Participants en ligne - Inclure l'assistant s'il est actif */}
+        {(chat.participants.length > 0 || chat.isAssistantActive) && (
           <div className="online-participants">
             <span className="participants-label">En ligne:</span>
             {chat.participants
@@ -162,6 +173,12 @@ const ClientChatModule = ({ onBack }) => {
                   {getMessageSenderDisplay({ sender_type: 'user', sender_role: participant.role })}
                 </span>
               ))}
+            {/* Indicateur Assistant Amani actif */}
+            {chat.isAssistantActive && (
+              <span className="participant assistant-active">
+                🤖 Assistant Amani
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -172,9 +189,10 @@ const ClientChatModule = ({ onBack }) => {
           {chat.messages.map((message) => (
             <div
               key={message.id}
-              className={`message ${message.sender_type === 'client' ? 'message-own' : 'message-other'} ${
-                message.type_message === 'system' ? 'message-system' : ''
-              }`}
+              className={`message ${
+                message.sender_type === 'client' ? 'message-own' : 
+                message.sender_type === 'assistant' ? 'message-assistant' : 'message-other'
+              } ${message.type_message === 'system' ? 'message-system' : ''}`}
             >
               {message.sender_type !== 'client' && message.type_message !== 'system' && (
                 <div className="message-sender">
@@ -192,16 +210,18 @@ const ClientChatModule = ({ onBack }) => {
             </div>
           ))}
           
-          {/* Indicateur de frappe */}
+          {/* Indicateur de frappe - Mis à jour pour l'assistant */}
           {chat.typingUsers.length > 0 && (
-            <div className="typing-indicator">
+            <div className={`typing-indicator ${chat.typingUsers.some(u => u.userType === 'assistant') ? 'assistant-typing' : ''}`}>
               <div className="typing-dots">
                 <span></span>
                 <span></span>
                 <span></span>
               </div>
               <span className="typing-text">
-                L'équipe support est en train d'écrire...
+                {chat.typingUsers.some(u => u.userType === 'assistant') 
+                  ? 'Assistant Amani est en train d\'analyser votre demande...'
+                  : 'L\'équipe support est en train d\'écrire...'}
               </span>
             </div>
           )}
@@ -244,6 +264,14 @@ const ClientChatModule = ({ onBack }) => {
             <span>Connexion au chat en cours...</span>
           </div>
         )}
+
+        {/* Indicateur Assistant Amani actif */}
+        {chat.isAssistantActive && (
+          <div className="assistant-indicator">
+            <span className="assistant-icon">🤖</span>
+            <span>Assistant Amani est disponible pour vous aider en attendant notre équipe</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -264,6 +292,13 @@ const ClientChatModule = ({ onBack }) => {
               <span className="conversation-status">
                 {chat.currentConversation.statut === 'active' ? '🟢 Active' : '🔴 Fermée'}
               </span>
+            </div>
+          )}
+          {/* Indicateur statut assistant dans le header */}
+          {chat.isAssistantActive && (
+            <div className="assistant-status">
+              <span className="assistant-status-dot"></span>
+              <span>Assistant IA</span>
             </div>
           )}
         </div>
@@ -290,7 +325,10 @@ const ClientChatModule = ({ onBack }) => {
       <div className="chat-footer">
         <div className="support-info">
           <span className="info-text">
-            💡 Notre équipe répond généralement en quelques minutes pendant les heures d'ouverture.
+            {chat.isAssistantActive 
+              ? '🤖 Assistant Amani vous aide en attendant notre équipe. Réponses instantanées disponibles.'
+              : '💡 Notre équipe répond généralement en quelques minutes pendant les heures d\'ouverture.'
+            }
           </span>
         </div>
       </div>

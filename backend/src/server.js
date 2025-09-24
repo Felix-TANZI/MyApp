@@ -16,6 +16,8 @@ let notificationService;
 let notificationRoutes;
 let chatService;
 let chatRoutes;
+let assistantAmaniService;
+let assistantRoutes;
 
 // Chargement du service de notifications
 try {
@@ -45,7 +47,7 @@ try {
   chatService = null;
 }
 
-// Chargement des routes chat\
+// Chargement des routes chat
 try {
   chatRoutes = require('./routes/chat');
   console.log('✅ Routes chat chargées avec succès');
@@ -53,6 +55,24 @@ try {
   console.error('❌ ERREUR CRITIQUE: Routes chat non disponibles:', error.message);
   console.error('Stack:', error.stack);
   chatRoutes = null;
+}
+
+// Chargement du service Assistant Amani
+try {
+  assistantAmaniService = require('./services/assistantAmaniService');
+  console.log('✅ Service Assistant Amani chargé avec succès');
+} catch (error) {
+  console.log('⚠️ Service Assistant Amani non disponible:', error.code || error.message);
+  assistantAmaniService = null;
+}
+
+// Chargement des routes assistant
+try {
+  assistantRoutes = require('./routes/assistant');
+  console.log('✅ Routes Assistant Amani chargées avec succès');
+} catch (error) {
+  console.log('⚠️ Routes Assistant Amani non disponibles:', error.code || error.message);
+  assistantRoutes = null;
 }
 
 const app = express();
@@ -82,28 +102,28 @@ if (notificationService || chatService) {
     console.log('🔗 Socket.IO configuré avec succès');
 
     // Initialiser les services disponibles avec gestion d'erreur
-if (notificationService) {
-  try {
-    // Notifications sur le namespace par défaut
-    notificationService.initialize(io);
-    console.log('🔔 Service de notifications initialisé avec succès');
-  } catch (error) {
-    console.error('❌ Erreur initialisation service notifications:', error);
-    notificationService = null;
-  }
-}
+    if (notificationService) {
+      try {
+        // Notifications sur le namespace par défaut
+        notificationService.initialize(io);
+        console.log('🔔 Service de notifications initialisé avec succès');
+      } catch (error) {
+        console.error('❌ Erreur initialisation service notifications:', error);
+        notificationService = null;
+      }
+    }
 
-if (chatService) {
-  try {
-    // Chat sur un namespace dédié
-    const chatNamespace = io.of('/chat');
-    chatService.initialize(chatNamespace);
-    console.log('💬 Service de chat initialisé avec succès');
-  } catch (error) {
-    console.error('❌ Erreur initialisation service chat:', error);
-    chatService = null;
-  }
-}
+    if (chatService) {
+      try {
+        // Chat sur un namespace dédié
+        const chatNamespace = io.of('/chat');
+        chatService.initialize(chatNamespace);
+        console.log('💬 Service de chat initialisé avec succès');
+      } catch (error) {
+        console.error('❌ Erreur initialisation service chat:', error);
+        chatService = null;
+      }
+    }
 
     // Gestion des connexions globales
     io.on('connection', (socket) => {
@@ -183,6 +203,9 @@ app.use((req, res, next) => {
   if (chatService) {
     req.chatService = chatService;
   }
+  if (assistantAmaniService) {
+    req.assistantAmaniService = assistantAmaniService;
+  }
   next();
 });
 
@@ -214,7 +237,7 @@ async function testDB() {
 }
 
 // Routes principales
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
   const notificationStats = notificationService ? notificationService.getConnectionStats() : { 
     connectedUsers: 0, 
     connectedClients: 0, 
@@ -227,10 +250,20 @@ app.get('/', (req, res) => {
     connectedProfessionals: 0,
     activeConversations: 0
   };
+
+  // Stats de l'assistant
+  let assistantStats = null;
+  if (assistantAmaniService) {
+    try {
+      assistantStats = await assistantAmaniService.getStats();
+    } catch (error) {
+      assistantStats = { enabled: false, error: error.message };
+    }
+  }
   
   res.json({
-    message: 'API Amani - Système de Gestion des Factures',
-    version: '1.0.0',
+    message: 'API Amani - Système de Gestion des Factures avec Assistant IA',
+    version: '1.1.0',
     status: 'running',
     services: {
       notifications: {
@@ -244,7 +277,15 @@ app.get('/', (req, res) => {
         totalConnected: chatStats.totalConnected,
         connectedClients: chatStats.connectedClients,
         connectedProfessionals: chatStats.connectedProfessionals,
-        activeConversations: chatStats.activeConversations
+        activeConversations: chatStats.activeConversations,
+        // Info assistant dans les stats chat
+        assistant: chatStats.assistantAmani || null
+      },
+      // Section dédiée à l'assistant
+      assistantAmani: assistantStats || {
+        service: assistantAmaniService ? 'loaded' : 'unavailable',
+        enabled: false,
+        error: assistantAmaniService ? null : 'Service non chargé'
       }
     },
     endpoints: [
@@ -309,6 +350,14 @@ app.get('/', (req, res) => {
         'GET /api/chat/stats - Statistiques (pro)'
       ] : ['❌ Chat endpoints non disponibles']),
       
+      // Assistant endpoints
+      ...(assistantRoutes ? [
+        'GET /api/assistant/stats - Statistiques assistant (pro)',
+        'POST /api/assistant/test - Tester l\'assistant (admin)',
+        'GET /api/assistant/status - Statut de l\'assistant',
+        'POST /api/assistant/toggle - Activer/désactiver (admin)'
+      ] : ['❌ Assistant endpoints non disponibles']),
+      
       // Notifications endpoints
       ...(notificationRoutes ? [
         'GET /api/notifications',
@@ -339,7 +388,7 @@ app.get('/', (req, res) => {
           'join_conversation - Rejoindre conversation',
           'leave_conversation - Quitter conversation',
           'send_message - Envoyer message',
-          'new_message - Nouveau message reçu',
+          'new_message - Nouveau message reçu (incluant Assistant Amani)',
           'mark_messages_read - Marquer comme lu',
           'user_typing - Indicateur frappe',
           'typing_start/typing_stop - Contrôle frappe',
@@ -350,6 +399,19 @@ app.get('/', (req, res) => {
     } : {
       status: 'unavailable',
       reason: 'Aucun service WebSocket disponible'
+    },
+    // Information spécifique sur l'assistant
+    assistantAmani: {
+      enabled: assistantStats?.enabled || false,
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      activationCondition: "Aucun professionnel en ligne",
+      features: [
+        "Réponse automatique aux questions fréquentes",
+        "Gestion des factures et paiements", 
+        "Informations sur les services hôteliers",
+        "Escalade intelligente vers les professionnels",
+        "Support multilingue (français)"
+      ]
     },
     timestamp: new Date().toISOString()
   });
@@ -368,6 +430,25 @@ app.get('/api/health', async (req, res) => {
     connectedProfessionals: 0,
     activeConversations: 0
   };
+
+  // Health check de l'assistant
+  let assistantHealth = null;
+  if (assistantAmaniService) {
+    try {
+      assistantHealth = await assistantAmaniService.getStats();
+      assistantHealth.status = assistantHealth.enabled ? 'healthy' : 'disabled';
+    } catch (error) {
+      assistantHealth = {
+        status: 'error',
+        error: error.message
+      };
+    }
+  } else {
+    assistantHealth = {
+      status: 'unavailable',
+      reason: 'Service non chargé'
+    };
+  }
   
   const healthStatus = {
     status: dbOk ? 'healthy' : 'degraded',
@@ -380,13 +461,18 @@ app.get('/api/health', async (req, res) => {
       chat: {
         status: chatService ? 'running' : 'unavailable',
         connections: chatStats
-      }
+      },
+      // Health de l'assistant
+      assistantAmani: assistantHealth
     },
     environment: {
       node_env: process.env.NODE_ENV || 'development',
       port: PORT,
       db_host: process.env.DB_HOST || '127.0.0.1',
-      db_port: process.env.DB_PORT || 3307
+      db_port: process.env.DB_PORT || 3307,
+      // Variables d'environnement de l'assistant
+      openai_configured: !!process.env.OPENAI_API_KEY,
+      assistant_enabled: process.env.ASSISTANT_ENABLED === 'true'
     },
     timestamp: new Date().toISOString()
   };
@@ -414,7 +500,6 @@ try {
 } catch (error) {
   console.log('⚠️ Routes client non disponibles:', error.message);
   
-  // Route de fallback pour les erreurs client
   app.use('/api/client/*', (req, res) => {
     res.status(503).json({
       success: false,
@@ -432,7 +517,6 @@ try {
 } catch (error) {
   console.log('⚠️ Routes requests non disponibles:', error.message);
   
-  // Route de fallback pour les erreurs requests
   app.use('/api/requests/*', (req, res) => {
     res.status(503).json({
       success: false,
@@ -442,13 +526,12 @@ try {
   });
 }
 
-//  chat - Gestion avec fallback
+// Routes chat - Gestion avec fallback
 if (chatRoutes && chatService) {
   try {
     app.use('/api/chat', chatRoutes);
     console.log('✅ Routes chat montées sur /api/chat avec succès');
     
-    // Test immédiat de disponibilité
     console.log('🧪 Test des routes chat:');
     console.log('   ✅ GET  /api/chat/conversations - Disponible');
     console.log('   ✅ POST /api/chat/conversations - Disponible');  
@@ -457,16 +540,13 @@ if (chatRoutes && chatService) {
     
   } catch (error) {
     console.error('❌ ERREUR CRITIQUE lors du montage des routes chat:', error);
-    console.error('Stack trace:', error.stack);
     
-    // Routes de fallback détaillées pour éviter 404
     app.use('/api/chat/*', (req, res) => {
       console.error(`❌ Tentative d'accès à route chat indisponible: ${req.method} ${req.originalUrl}`);
       res.status(503).json({
         success: false,
         message: 'Service de chat temporairement indisponible',
         error: 'CHAT_ROUTES_MOUNT_ERROR',
-        details: 'Les routes de chat n\'ont pas pu être montées correctement',
         timestamp: new Date().toISOString()
       });
     });
@@ -476,7 +556,6 @@ if (chatRoutes && chatService) {
   if (!chatRoutes) console.error('   - Routes chat non chargées');
   if (!chatService) console.error('   - Service chat non chargé');
   
-  // Routes de fallback informatives
   app.use('/api/chat/*', (req, res) => {
     const reasons = [];
     if (!chatRoutes) reasons.push('Routes chat non chargées');
@@ -489,12 +568,58 @@ if (chatRoutes && chatService) {
       message: 'Service de chat non disponible',
       error: 'CHAT_SERVICE_UNAVAILABLE',
       reasons: reasons,
-      details: 'Le service de chat n\'a pas pu être initialisé. Vérifiez les logs serveur.',
+      timestamp: new Date().toISOString()
+    });
+  });
+}
+
+// Routes Assistant Amani
+if (assistantRoutes && assistantAmaniService) {
+  try {
+    app.use('/api/assistant', assistantRoutes);
+    console.log('✅ Routes Assistant Amani montées sur /api/assistant avec succès');
+    
+    console.log('🧪 Test des routes Assistant Amani:');
+    console.log('   ✅ GET  /api/assistant/stats - Disponible');
+    console.log('   ✅ POST /api/assistant/test - Disponible');
+    console.log('   ✅ GET  /api/assistant/status - Disponible');
+    console.log('   ✅ Service Assistant Amani - Actif');
+    
+  } catch (error) {
+    console.error('❌ ERREUR CRITIQUE lors du montage des routes Assistant Amani:', error);
+    
+    app.use('/api/assistant/*', (req, res) => {
+      console.error(`❌ Tentative d'accès à route Assistant indisponible: ${req.method} ${req.originalUrl}`);
+      res.status(503).json({
+        success: false,
+        message: 'Service Assistant Amani temporairement indisponible',
+        error: 'ASSISTANT_ROUTES_MOUNT_ERROR',
+        timestamp: new Date().toISOString()
+      });
+    });
+  }
+} else {
+  console.error('❌ ASSISTANT AMANI NON DISPONIBLE - Raisons possibles:');
+  if (!assistantRoutes) console.error('   - Routes Assistant non chargées');
+  if (!assistantAmaniService) console.error('   - Service Assistant non chargé');
+  
+  app.use('/api/assistant/*', (req, res) => {
+    const reasons = [];
+    if (!assistantRoutes) reasons.push('Routes Assistant non chargées');
+    if (!assistantAmaniService) reasons.push('Service Assistant non initialisé');
+    
+    console.log(`⚠️ Tentative d'accès à l'Assistant: ${req.method} ${req.originalUrl}`);
+    
+    res.status(503).json({
+      success: false,
+      message: 'Service Assistant Amani non disponible',
+      error: 'ASSISTANT_SERVICE_UNAVAILABLE',
+      reasons: reasons,
       suggestions: [
-        'Vérifiez que tous les fichiers de chat sont présents',
-        'Contrôlez les dépendances (socket.io, etc.)',
-        'Redémarrez le serveur',
-        'Consultez les logs de démarrage'
+        'Vérifiez que la clé OpenAI API est configurée dans .env',
+        'Contrôlez les dépendances (npm install openai)',
+        'Vérifiez les paramètres ASSISTANT_* dans .env',
+        'Redémarrez le serveur'
       ],
       timestamp: new Date().toISOString()
     });
@@ -517,30 +642,13 @@ if (notificationRoutes && notificationService) {
       });
     });
   }
-} else if (notificationRoutes || notificationService) {
-  // Au moins un composant est chargé mais pas l'autre
-  app.use('/api/notifications/*', (req, res) => {
-    res.status(503).json({
-      success: false,
-      message: 'Service de notifications partiellement disponible',
-      error: 'NOTIFICATION_PARTIAL_LOAD',
-      details: {
-        routes: !!notificationRoutes,
-        service: !!notificationService
-      }
-    });
-  });
 }
 
-// Route 404 améliorée avec diagnostics détaillés
+// Route 404 améliorée
 app.use('*', (req, res) => {
   const isApiRoute = req.originalUrl.startsWith('/api/');
   
-  // Log détaillé pour débugger
   console.log(`❌ Route 404: ${req.method} ${req.originalUrl}`);
-  console.log(`   - User Agent: ${req.get('User-Agent') || 'Non spécifié'}`);
-  console.log(`   - Origin: ${req.get('Origin') || 'Non spécifié'}`);
-  console.log(`   - Referer: ${req.get('Referer') || 'Non spécifié'}`);
 
   const availableEndpoints = [
     '✅ GET / - API info et statistiques',
@@ -549,17 +657,14 @@ app.use('*', (req, res) => {
     '✅ POST /api/auth/login/client - Connexion client'
   ];
 
-  // Ajouter les endpoints selon la disponibilité des services
   if (chatRoutes && chatService) {
     availableEndpoints.push('✅ GET /api/chat/conversations - Chat (authentifié)');
-    availableEndpoints.push('✅ POST /api/chat/conversations - Créer conversation (client)');
     availableEndpoints.push('✅ WebSocket /socket.io/ - Chat temps réel');
-  } else {
-    availableEndpoints.push('❌ Chat endpoints non disponibles');
   }
 
-  if (notificationService) {
-    availableEndpoints.push('✅ WebSocket /socket.io/ - Notifications temps réel');
+  if (assistantRoutes && assistantAmaniService) {
+    availableEndpoints.push('✅ GET /api/assistant/stats - Assistant (pro auth)');
+    availableEndpoints.push('✅ GET /api/assistant/status - Statut assistant');
   }
 
   const response = {
@@ -567,24 +672,12 @@ app.use('*', (req, res) => {
     message: `Route non trouvée: ${req.method} ${req.originalUrl}`,
     availableEndpoints,
     debug: {
-      method: req.method,
-      path: req.originalUrl,
-      isApiRoute,
       services: {
-        chatRoutesLoaded: !!chatRoutes,
-        chatServiceLoaded: !!chatService,
-        notificationServiceLoaded: !!notificationService,
-        notificationRoutesLoaded: !!notificationRoutes
+        chatLoaded: !!chatService,
+        assistantLoaded: !!assistantAmaniService,
+        notificationLoaded: !!notificationService
       }
     },
-    suggestions: isApiRoute ? [
-      'Vérifiez l\'URL de l\'endpoint',
-      'Consultez la liste des endpoints disponibles',
-      'Vérifiez que le service requis est actif'
-    ] : [
-      'Cette API ne sert que des endpoints /api/*',
-      'Consultez GET / pour la liste complète des endpoints'
-    ],
     timestamp: new Date().toISOString()
   };
 
@@ -651,14 +744,6 @@ async function startServer() {
     
     if (!dbConnected) {
       console.error('❌ ERREUR CRITIQUE: Impossible de se connecter à la base de données');
-      console.log('🔧 Suggestions pour corriger:');
-      console.log('1. Vérifiez que MySQL/MariaDB est démarré');
-      console.log('2. Contrôlez les paramètres dans le fichier .env:');
-      console.log(`   - DB_HOST=${process.env.DB_HOST || '127.0.0.1'}`);
-      console.log(`   - DB_PORT=${process.env.DB_PORT || '3307'}`);
-      console.log(`   - DB_NAME=${process.env.DB_NAME || 'gestionFac'}`);
-      console.log('3. Testez manuellement: mysql -h 127.0.0.1 -P 3307 -u root -p');
-      console.log('4. Vérifiez que la base "gestionFac" existe');
       process.exit(1);
     }
     
@@ -682,27 +767,6 @@ async function startServer() {
       
       console.log('🎉==================================================🎉');
       
-      console.log('\n📋 Routes principales disponibles:');
-      console.log('- ✅ GET  / (Infos API + statistiques temps réel)');
-      console.log('- ✅ GET  /api/health (Santé système + diagnostics)');
-      console.log('- ✅ POST /api/auth/login/professional (Connexion équipe)');
-      console.log('- ✅ POST /api/auth/login/client (Connexion clients)');
-      console.log('- ✅ GET  /api/requests (Demandes admin - auth requise)');
-      
-      if (chatRoutes && chatService) {
-        console.log('- ✅ GET  /api/chat/conversations (Liste conversations - auth)');
-        console.log('- ✅ POST /api/chat/conversations (Créer conversation client - auth)');
-        console.log('- ✅ GET  /api/chat/stats (Statistiques chat professionnels - auth)');
-        console.log('- ✅ WebSocket chat temps réel disponible');
-      } else {
-        console.log('- ❌ Routes chat NON DISPONIBLES');
-        console.log('  Raisons: Service ou routes non chargés');
-      }
-      
-      if (notificationService) {
-        console.log('- ✅ WebSocket notifications temps réel disponible');
-      }
-      
       console.log('\n🔔 État détaillé des services:');
       console.log(`- Base de données MySQL: ✅ Connectée`);
       console.log(`- Authentification JWT: ✅ Active`);
@@ -710,6 +774,8 @@ async function startServer() {
       console.log(`- Service notifications: ${notificationService ? '✅ Chargé' : '❌ Non chargé'}`);
       console.log(`- Service chat: ${chatService ? '✅ Chargé' : '❌ Non chargé'}`);
       console.log(`- Routes chat: ${chatRoutes ? '✅ Montées' : '❌ Non montées'}`);
+      console.log(`- Assistant Amani: ${assistantAmaniService ? (assistantAmaniService.isEnabled() ? '🤖 Actif' : '⚠️ Chargé mais désactivé') : '❌ Non chargé'}`);
+      console.log(`- Routes assistant: ${assistantRoutes ? '✅ Montées' : '❌ Non montées'}`);
       console.log(`- Routes notifications: ${notificationRoutes ? '✅ Montées' : '❌ Non montées'}`);
       console.log(`- Gestion des demandes admin: ✅ Active`);
       
@@ -717,13 +783,13 @@ async function startServer() {
       console.log('📱 Frontend: http://localhost:3000');
       console.log('🌐 API Info: http://localhost:5000');
       console.log('💊 Santé système: http://localhost:5000/api/health');
-      console.log('🔐 Test connexion: POST http://localhost:5000/api/auth/login/professional');
       
       if (chatRoutes && chatService) {
         console.log('💬 Test chat API: GET http://localhost:5000/api/chat/conversations');
-        console.log('   (Nécessite un token d\'authentification valide)');
-      } else {
-        console.log('❌ Chat API non testable - Service indisponible');
+      }
+      
+      if (assistantRoutes && assistantAmaniService) {
+        console.log('🤖 Test assistant: GET http://localhost:5000/api/assistant/status');
       }
       
       console.log('================================');
@@ -734,7 +800,6 @@ async function startServer() {
     
   } catch (error) {
     console.error('❌ Erreur critique lors du démarrage:', error);
-    console.error('Stack:', error.stack);
     process.exit(1);
   }
 }

@@ -1,6 +1,15 @@
 const { query } = require('../utils/auth');
 const jwt = require('jsonwebtoken');
 
+// Import du service Assistant Amani
+let assistantAmaniService;
+try {
+  assistantAmaniService = require('./assistantAmaniService');
+} catch (error) {
+  console.log('⚠️ Service Assistant Amani non disponible dans chatService:', error.message);
+  assistantAmaniService = null;
+}
+
 class ChatService {
   constructor() {
     this.io = null;
@@ -17,35 +26,35 @@ class ChatService {
       this.cleanupInactiveConnections();
     }, 60000);
     
-    console.log('✅ Service de chat initialisé avec nettoyage automatique');
+    console.log('Service de chat initialisé avec nettoyage automatique');
   }
 
   setupSocketEvents() {
     this.io.on('connection', (socket) => {
-      console.log(`🔌 Nouvelle connexion chat: ${socket.id}`);
+      console.log(`Nouvelle connexion chat: ${socket.id}`);
 
       const authTimeout = setTimeout(() => {
         if (!socket.authenticated) {
-          console.log(`⏰ Timeout d'authentification pour ${socket.id}`);
+          console.log(`Timeout d'authentification pour ${socket.id}`);
           socket.emit('chat_auth_error', { message: 'Timeout d\'authentification' });
           socket.disconnect();
         }
       }, 30000);
 
       socket.onAny((eventName, ...args) => {
-        console.log(`📨 [${socket.id}] Événement: ${eventName}`, 
+        console.log(`[${socket.id}] Événement: ${eventName}`, 
           args.length > 0 ? JSON.stringify(args[0]).substring(0, 200) : 'sans données'
         );
       });
 
       socket.on('chat_authenticate', async (data) => {
-        console.log(`🔐 Tentative d'authentification pour ${socket.id}`);
+        console.log(`Tentative d'authentification pour ${socket.id}`);
         clearTimeout(authTimeout);
         
         try {
           await this.authenticateSocket(socket, data);
         } catch (error) {
-          console.error(`❌ Erreur authentification ${socket.id}:`, error.message);
+          console.error(`Erreur authentification ${socket.id}:`, error.message);
           socket.emit('chat_auth_error', { message: error.message || 'Authentification échouée' });
           socket.disconnect();
         }
@@ -57,11 +66,11 @@ class ChatService {
           return;
         }
         
-        console.log(`🏠 [${socket.id}] Tentative de rejoindre conversation:`, data);
+        console.log(`[${socket.id}] Tentative de rejoindre conversation:`, data);
         try {
           await this.joinConversation(socket, data);
         } catch (error) {
-          console.error(`❌ [${socket.id}] Erreur join conversation:`, error);
+          console.error(`[${socket.id}] Erreur join conversation:`, error);
           socket.emit('error', { message: 'Impossible de rejoindre la conversation' });
         }
       });
@@ -69,11 +78,11 @@ class ChatService {
       socket.on('leave_conversation', async (data) => {
         if (!socket.authenticated) return;
         
-        console.log(`👋 [${socket.id}] Tentative de quitter conversation:`, data);
+        console.log(`[${socket.id}] Tentative de quitter conversation:`, data);
         try {
           await this.leaveConversation(socket, data);
         } catch (error) {
-          console.error(`❌ [${socket.id}] Erreur leave conversation:`, error);
+          console.error(`[${socket.id}] Erreur leave conversation:`, error);
         }
       });
 
@@ -83,11 +92,11 @@ class ChatService {
           return;
         }
         
-        console.log(`💬 [${socket.id}] Tentative d'envoi message`);
+        console.log(`[${socket.id}] Tentative d'envoi message`);
         try {
           await this.sendMessage(socket, data);
         } catch (error) {
-          console.error(`❌ [${socket.id}] Erreur envoi message:`, error);
+          console.error(`[${socket.id}] Erreur envoi message:`, error);
           socket.emit('error', { message: 'Erreur lors de l\'envoi du message' });
         }
       });
@@ -95,23 +104,23 @@ class ChatService {
       socket.on('mark_messages_read', async (data) => {
         if (!socket.authenticated) return;
         
-        console.log(`✅ [${socket.id}] Marquage messages lus:`, data);
+        console.log(`[${socket.id}] Marquage messages lus:`, data);
         try {
           await this.markMessagesAsRead(socket, data);
         } catch (error) {
-          console.error(`❌ [${socket.id}] Erreur marquage messages lus:`, error);
+          console.error(`[${socket.id}] Erreur marquage messages lus:`, error);
         }
       });
 
       socket.on('typing_start', (data) => {
         if (!socket.authenticated) return;
-        console.log(`⌨️ [${socket.id}] Début frappe:`, data);
+        console.log(`[${socket.id}] Début frappe:`, data);
         this.broadcastTyping(socket, data, true);
       });
 
       socket.on('typing_stop', (data) => {
         if (!socket.authenticated) return;
-        console.log(`⏹️ [${socket.id}] Fin frappe:`, data);
+        console.log(`[${socket.id}] Fin frappe:`, data);
         this.broadcastTyping(socket, data, false);
       });
 
@@ -120,19 +129,19 @@ class ChatService {
       });
 
       socket.on('disconnect', (reason) => {
-        console.log(`❌ [${socket.id}] Déconnecté: ${reason}`);
+        console.log(`[${socket.id}] Déconnecté: ${reason}`);
         this.handleDisconnect(socket);
         clearTimeout(authTimeout);
       });
 
       socket.on('error', (error) => {
-        console.error(`💥 [${socket.id}] Erreur socket:`, error);
+        console.error(`[${socket.id}] Erreur socket:`, error);
       });
     });
   }
 
   async authenticateSocket(socket, data) {
-    console.log('🔍 Début authentification socket détaillée');
+    console.log('Début authentification socket détaillée');
     
     const { token, userType } = data || {};
     
@@ -146,7 +155,7 @@ class ChatService {
 
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      console.log('🔐 Token vérifié:', {
+      console.log('Token vérifié:', {
         userId: decoded.userId,
         userType: decoded.userType,
         role: decoded.role,
@@ -189,7 +198,7 @@ class ChatService {
       const existingConnection = this.connectedUsers.get(existingUserKey);
       
       if (existingConnection && existingConnection.socketId !== socket.id) {
-        console.log(`🔄 Déconnexion ancienne session pour ${userInfo.nom}`);
+        console.log(`Déconnexion ancienne session pour ${userInfo.nom}`);
         const oldSocket = this.io.sockets.sockets.get(existingConnection.socketId);
         if (oldSocket) {
           oldSocket.emit('session_replaced', { message: 'Nouvelle connexion détectée' });
@@ -227,10 +236,10 @@ class ChatService {
         connectedAt: new Date()
       });
 
-      console.log(`✅ Chat authentifié: ${actualUserType} ${userInfo.nom} ${userInfo.prenom || ''} (${socket.id})`);
+      console.log(`Chat authentifié: ${actualUserType} ${userInfo.nom} ${userInfo.prenom || ''} (${socket.id})`);
 
     } catch (jwtError) {
-      console.error('❌ Erreur JWT:', {
+      console.error('Erreur JWT:', {
         name: jwtError.name,
         message: jwtError.message,
         expiredAt: jwtError.expiredAt
@@ -248,11 +257,11 @@ class ChatService {
       return;
     }
 
-    console.log(`🏠 ${socket.userInfo.nom} tente de rejoindre conversation ${conversationId}`);
+    console.log(`${socket.userInfo.nom} tente de rejoindre conversation ${conversationId}`);
 
     const hasAccess = await this.checkConversationAccess(conversationId, userId, userType);
     if (!hasAccess) {
-      console.log(`❌ Accès refusé pour ${socket.userInfo.nom} à la conversation ${conversationId}`);
+      console.log(`Accès refusé pour ${socket.userInfo.nom} à la conversation ${conversationId}`);
       socket.emit('error', { message: 'Accès non autorisé à cette conversation' });
       return;
     }
@@ -264,7 +273,7 @@ class ChatService {
     }
 
     const conversation = conversations[0];
-    console.log(`✅ Accès autorisé à la conversation ${conversationId} (statut: ${conversation.statut})`);
+    console.log(`Accès autorisé à la conversation ${conversationId} (statut: ${conversation.statut})`);
 
     const roomName = `conversation_${conversationId}`;
     socket.join(roomName);
@@ -290,7 +299,7 @@ class ChatService {
       conversationStatus: conversation.statut
     });
 
-    console.log(`✅ ${socket.userInfo.nom} a rejoint la conversation ${conversationId} avec ${onlineParticipants.length} participants`);
+    console.log(`${socket.userInfo.nom} a rejoint la conversation ${conversationId} avec ${onlineParticipants.length} participants`);
   }
 
   async leaveConversation(socket, data) {
@@ -299,7 +308,7 @@ class ChatService {
 
     if (!socket.authenticated || !conversationId) return;
 
-    console.log(`👋 ${socket.userInfo.nom} quitte la conversation ${conversationId}`);
+    console.log(`${socket.userInfo.nom} quitte la conversation ${conversationId}`);
 
     const roomName = `conversation_${conversationId}`;
     socket.leave(roomName);
@@ -320,10 +329,9 @@ class ChatService {
       userInfo: socket.userInfo
     });
 
-    console.log(`✅ ${socket.userInfo.nom} a quitté la conversation ${conversationId}`);
+    console.log(`${socket.userInfo.nom} a quitté la conversation ${conversationId}`);
   }
 
-  // CORRECTION PRINCIPALE : Correction de l'erreur Socket.IO rooms
   async sendMessage(socket, data) {
     const { conversationId, message, type = 'text' } = data;
     const { userId, userType, userInfo } = socket;
@@ -365,6 +373,7 @@ class ChatService {
     }
 
     try {
+      // Sauvegarder le message
       const result = await query(`
         INSERT INTO messages (conversation_id, sender_type, sender_id, message, type_message)
         VALUES (?, ?, ?, ?, ?)
@@ -386,26 +395,199 @@ class ChatService {
 
       const messageData = newMessages[0];
 
-      console.log(`💬 Message sauvé: ID ${messageData.id} de ${userInfo.nom} dans conversation ${conversationId}`);
+      console.log(`Message sauvé: ID ${messageData.id} de ${userInfo.nom} dans conversation ${conversationId}`);
 
-      // CORRECTION : Utiliser this.io.to() directement
+      // Diffuser le message à tous les participants
       const roomName = `conversation_${conversationId}`;
       this.io.to(roomName).emit('new_message', messageData);
 
-      console.log(`📡 Message diffusé à la room ${roomName}`);
+      console.log(`Message diffusé à la room ${roomName}`);
 
-      // CORRECTION : Notification avec type valide
+      // ASSISTANT AMANI: Si c'est un message client et que l'assistant est disponible
+      if (userType === 'client' && assistantAmaniService?.isEnabled()) {
+        const professionnelsEnLigne = await this.checkOnlineProfessionals();
+        
+        if (professionnelsEnLigne === 0) {
+          console.log('Assistant Amani activé - aucun professionnel en ligne');
+          
+          // Délai de 2 secondes pour laisser le temps aux professionnels de répondre
+          setTimeout(async () => {
+            try {
+              // Vérifier à nouveau s'il n'y a toujours pas de professionnels
+              const stillNoProfessionals = await this.checkOnlineProfessionals();
+              
+              if (stillNoProfessionals === 0) {
+                await this.handleAssistantResponse(conversationId, cleanMessage, userId);
+              } else {
+                console.log('Assistant Amani annulé - professionnel connecté entre temps');
+              }
+            } catch (error) {
+              console.error('Erreur Assistant Amani:', error);
+            }
+          }, 2000);
+        }
+      }
+
+      // Notification des professionnels hors ligne pour les messages clients
       if (userType === 'client') {
         await this.notifyOfflineProfessionals(conversationId, messageData);
       }
 
-      // DEBUG : Vérifier les sockets dans la room
+      // Debug info
       const socketsInRoom = await this.io.in(roomName).allSockets();
-      console.log(`🔍 Room ${roomName} contient ${socketsInRoom.size} sockets`);
+      console.log(`Room ${roomName} contient ${socketsInRoom.size} sockets`);
 
     } catch (error) {
-      console.error(`❌ Erreur sauvegarde message:`, error);
+      console.error(`Erreur sauvegarde message:`, error);
       socket.emit('error', { message: 'Erreur lors de la sauvegarde du message' });
+    }
+  }
+
+  // ASSISTANT AMANI: Gestion de la réponse de l'assistant
+  async handleAssistantResponse(conversationId, clientMessage, clientId) {
+    if (!assistantAmaniService) {
+      console.log('Service Assistant non disponible');
+      return;
+    }
+
+    try {
+      console.log('Génération réponse Assistant Amani...');
+      
+      // Récupérer le contexte client
+      const clientContext = await assistantAmaniService.getClientContext(clientId);
+      
+      // Générer la réponse de l'assistant
+      const assistantResponse = await assistantAmaniService.getAssistantResponse(
+        clientMessage, 
+        clientContext
+      );
+
+      if (!assistantResponse) {
+        console.log('Assistant Amani n\'a pas généré de réponse');
+        return;
+      }
+
+      console.log('Assistant Amani response:', {
+        shouldEscalate: assistantResponse.shouldEscalate,
+        escalationReason: assistantResponse.escalationReason
+      });
+
+      // Sauvegarder le message de l'assistant
+      const assistantMessageResult = await query(`
+        INSERT INTO messages (conversation_id, sender_type, sender_id, message, type_message)
+        VALUES (?, 'assistant', NULL, ?, 'assistant')
+      `, [conversationId, assistantResponse.message]);
+
+      // Récupérer le message formaté
+      const assistantMessages = await query(`
+        SELECT * FROM vue_messages_chat WHERE id = ?
+      `, [assistantMessageResult.insertId]);
+
+      if (assistantMessages.length > 0) {
+        const assistantMessageData = assistantMessages[0];
+        
+        // Diffuser le message de l'assistant
+        const roomName = `conversation_${conversationId}`;
+        this.io.to(roomName).emit('new_message', assistantMessageData);
+        
+        console.log('Message Assistant Amani diffusé');
+
+        // Si escalade nécessaire, notifier les professionnels
+        if (assistantResponse.shouldEscalate) {
+          console.log('Escalade demandée par l\'assistant');
+          await this.notifyProfessionalsForEscalation(conversationId, assistantResponse);
+        }
+      }
+
+      // Mettre à jour l'activité de la conversation
+      await query(`
+        UPDATE conversations 
+        SET derniere_activite = CURRENT_TIMESTAMP 
+        WHERE id = ?
+      `, [conversationId]);
+
+    } catch (error) {
+      console.error('Erreur gestion réponse Assistant Amani:', error);
+      
+      // Message de fallback en cas d'erreur
+      try {
+        const fallbackResult = await query(`
+          INSERT INTO messages (conversation_id, sender_type, sender_id, message, type_message)
+          VALUES (?, 'assistant', NULL, ?, 'assistant')
+        `, [
+          conversationId, 
+          'Je rencontre une difficulté technique. Un membre de notre équipe vous contactera rapidement.'
+        ]);
+
+        const fallbackMessages = await query(`
+          SELECT * FROM vue_messages_chat WHERE id = ?
+        `, [fallbackResult.insertId]);
+
+        if (fallbackMessages.length > 0) {
+          const roomName = `conversation_${conversationId}`;
+          this.io.to(roomName).emit('new_message', fallbackMessages[0]);
+        }
+
+        // Forcer l'escalade en cas d'erreur
+        await this.notifyProfessionalsForEscalation(conversationId, {
+          escalationReason: 'Erreur technique Assistant Amani',
+          clientContext: `Conversation ${conversationId}`
+        });
+
+      } catch (fallbackError) {
+        console.error('Erreur message fallback:', fallbackError);
+      }
+    }
+  }
+
+  // ASSISTANT AMANI: Vérifier le nombre de professionnels en ligne
+  async checkOnlineProfessionals() {
+    try {
+      const result = await query(`
+        SELECT COUNT(*) as count 
+        FROM chat_participants cp
+        WHERE cp.user_type = 'user' 
+        AND cp.en_ligne = TRUE 
+        AND cp.derniere_vue >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+      `);
+      
+      return result[0]?.count || 0;
+    } catch (error) {
+      console.error('Erreur vérification professionnels en ligne:', error);
+      return 0;
+    }
+  }
+
+  // ASSISTANT AMANI: Notification d'escalade
+  async notifyProfessionalsForEscalation(conversationId, assistantResponse) {
+    try {
+      const allProfessionals = await query(`
+        SELECT id, nom, prenom, email FROM users 
+        WHERE role IN ('admin', 'commercial', 'comptable') 
+        AND statut = 'actif'
+      `);
+
+      const escalationMessage = assistantResponse.escalationReason || 'Intervention requise';
+
+      for (const professional of allProfessionals) {
+        await query(`
+          INSERT INTO notifications_users (user_id, type, titre, message, data)
+          VALUES (?, 'chat_escalation', 'Intervention requise - Chat Client', ?, ?)
+        `, [
+          professional.id,
+          `Assistant Amani demande votre intervention: ${escalationMessage}`,
+          JSON.stringify({
+            conversation_id: conversationId,
+            escalation_reason: assistantResponse.escalationReason,
+            client_context: assistantResponse.clientContext,
+            timestamp: new Date().toISOString()
+          })
+        ]);
+      }
+
+      console.log(`${allProfessionals.length} professionnels notifiés pour escalade`);
+    } catch (error) {
+      console.error('Erreur notification escalade:', error);
     }
   }
 
@@ -418,7 +600,7 @@ class ChatService {
     try {
       await query('CALL MarquerMessagesCommeLus(?, ?, ?)', [conversationId, userType, userId]);
 
-      console.log(`✅ Messages marqués comme lus pour ${socket.userInfo.nom} dans conversation ${conversationId}`);
+      console.log(`Messages marqués comme lus pour ${socket.userInfo.nom} dans conversation ${conversationId}`);
 
       const roomName = `conversation_${conversationId}`;
       socket.to(roomName).emit('messages_read', {
@@ -427,7 +609,7 @@ class ChatService {
         conversationId
       });
     } catch (error) {
-      console.error('❌ Erreur marquage messages lus:', error);
+      console.error('Erreur marquage messages lus:', error);
     }
   }
 
@@ -472,7 +654,7 @@ class ChatService {
     
     if (!userId || !userType) return;
 
-    console.log(`❌ Déconnexion chat: ${socket.userInfo?.nom || 'Inconnu'} (${socket.id})`);
+    console.log(`Déconnexion chat: ${socket.userInfo?.nom || 'Inconnu'} (${socket.id})`);
 
     if (socket.typingTimeouts) {
       Object.values(socket.typingTimeouts).forEach(timeout => clearTimeout(timeout));
@@ -504,7 +686,7 @@ class ChatService {
       }
     }
 
-    console.log(`🧹 Nettoyage terminé pour ${socket.userInfo?.nom || socket.id}`);
+    console.log(`Nettoyage terminé pour ${socket.userInfo?.nom || socket.id}`);
   }
 
   updateUserActivity(socket) {
@@ -518,7 +700,7 @@ class ChatService {
 
   async checkConversationAccess(conversationId, userId, userType) {
     try {
-      console.log(`🔐 Vérification accès: conversation ${conversationId}, user ${userId} (${userType})`);
+      console.log(`Vérification accès: conversation ${conversationId}, user ${userId} (${userType})`);
 
       if (userType === 'client') {
         const conversations = await query(
@@ -526,7 +708,7 @@ class ChatService {
           [conversationId, userId]
         );
         const hasAccess = conversations.length > 0;
-        console.log(`🔐 Client ${userId}: ${hasAccess ? 'AUTORITÉ' : 'REFUSÉ'}`);
+        console.log(`Client ${userId}: ${hasAccess ? 'AUTORISÉ' : 'REFUSÉ'}`);
         return hasAccess;
       }
 
@@ -536,14 +718,14 @@ class ChatService {
           [userId, 'admin', 'commercial', 'comptable']
         );
         const hasAccess = users.length > 0;
-        console.log(`🔐 Professionnel ${userId}: ${hasAccess ? 'AUTORITÉ' : 'REFUSÉ'}`);
+        console.log(`Professionnel ${userId}: ${hasAccess ? 'AUTORISÉ' : 'REFUSÉ'}`);
         return hasAccess;
       }
 
-      console.log(`🔐 Type utilisateur non reconnu: ${userType}`);
+      console.log(`Type utilisateur non reconnu: ${userType}`);
       return false;
     } catch (error) {
-      console.error('❌ Erreur vérification accès conversation:', error);
+      console.error('Erreur vérification accès conversation:', error);
       return false;
     }
   }
@@ -559,9 +741,9 @@ class ChatService {
         derniere_vue = CURRENT_TIMESTAMP
       `, [conversationId, userType, userId, isOnline, socketId]);
 
-      console.log(`👥 Statut participant mis à jour: ${userType} ${userId} -> ${isOnline ? 'EN LIGNE' : 'HORS LIGNE'}`);
+      console.log(`Statut participant mis à jour: ${userType} ${userId} -> ${isOnline ? 'EN LIGNE' : 'HORS LIGNE'}`);
     } catch (error) {
-      console.error('❌ Erreur mise à jour statut participant:', error);
+      console.error('Erreur mise à jour statut participant:', error);
     }
   }
 
@@ -593,12 +775,11 @@ class ChatService {
 
       return participants;
     } catch (error) {
-      console.error('❌ Erreur récupération participants:', error);
+      console.error('Erreur récupération participants:', error);
       return [];
     }
   }
 
-  // CORRECTION : Type de notification valide
   async notifyOfflineProfessionals(conversationId, messageData) {
     try {
       const offlineProfessionals = await query(`
@@ -615,17 +796,16 @@ class ChatService {
         )
       `, [conversationId]);
 
-      console.log(`📧 ${offlineProfessionals.length} professionnels hors ligne à notifier`);
+      console.log(`${offlineProfessionals.length} professionnels hors ligne à notifier`);
 
       for (const professional of offlineProfessionals) {
         const shortMessage = messageData.message.length > 100 
           ? messageData.message.substring(0, 100) + '...' 
           : messageData.message;
 
-        // CORRECTION : Utiliser un type existant dans la base
         await query(`
           INSERT INTO notifications_users (user_id, type, titre, message, data)
-          VALUES (?, 'facture_nouvelle', 'Nouveau message de chat', ?, ?)
+          VALUES (?, 'client_nouveau', 'Nouveau message de chat', ?, ?)
         `, [
           professional.id,
           `Message de ${messageData.sender_nom} ${messageData.sender_prenom}: ${shortMessage}`,
@@ -638,7 +818,7 @@ class ChatService {
         ]);
       }
     } catch (error) {
-      console.error('❌ Erreur notification professionnels hors ligne:', error);
+      console.error('Erreur notification professionnels hors ligne:', error);
     }
   }
 
@@ -653,13 +833,19 @@ class ChatService {
       connectedProfessionals: professionals.length,
       activeConversations: this.conversationRooms.size,
       clientsList: clients.map(c => c.userInfo.nom),
-      professionalsList: professionals.map(p => `${p.userInfo.prenom} ${p.userInfo.nom} (${p.userInfo.role})`)
+      professionalsList: professionals.map(p => `${p.userInfo.prenom} ${p.userInfo.nom} (${p.userInfo.role})`),
+      // Stats de l'assistant
+      assistantAmani: {
+        enabled: assistantAmaniService?.isEnabled() || false,
+        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        active: professionals.length === 0 // Assistant actif si aucun professionnel connecté
+      }
     };
   }
 
   broadcastSystemMessage(message, level = 'info') {
     if (this.io) {
-      console.log(`📢 Diffusion message système: ${message}`);
+      console.log(`Diffusion message système: ${message}`);
       this.io.emit('system_message', {
         message,
         level,
@@ -673,7 +859,7 @@ class ChatService {
     const user = this.connectedUsers.get(userKey);
     
     if (user && user.socket) {
-      console.log(`🔌 Déconnexion forcée: ${user.userInfo.nom} (${reason})`);
+      console.log(`Déconnexion forcée: ${user.userInfo.nom} (${reason})`);
       user.socket.emit('forced_disconnect', { reason });
       user.socket.disconnect(true);
       this.connectedUsers.delete(userKey);
@@ -688,14 +874,14 @@ class ChatService {
       const inactiveTime = now - userData.lastActivity.getTime();
       
       if (inactiveTime > 30 * 60 * 1000) {
-        console.log(`🧹 Nettoyage connexion inactive: ${userData.userInfo.nom} (${Math.round(inactiveTime / 60000)} min)`);
+        console.log(`Nettoyage connexion inactive: ${userData.userInfo.nom} (${Math.round(inactiveTime / 60000)} min)`);
         this.disconnectUser(userData.userType, userData.userId, 'Inactivité prolongée');
         cleanedCount++;
       }
     }
 
     if (cleanedCount > 0) {
-      console.log(`🧹 ${cleanedCount} connexions inactives nettoyées`);
+      console.log(`${cleanedCount} connexions inactives nettoyées`);
     }
 
     let roomsCleaned = 0;
@@ -707,7 +893,7 @@ class ChatService {
     }
 
     if (roomsCleaned > 0) {
-      console.log(`🧹 ${roomsCleaned} rooms vides supprimées`);
+      console.log(`${roomsCleaned} rooms vides supprimées`);
     }
   }
 
