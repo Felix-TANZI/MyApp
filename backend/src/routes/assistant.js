@@ -79,7 +79,8 @@ router.get('/status', async (req, res) => {
   try {
     const { type: userType } = req.user;
     
-    if (userType !== 'user') {
+    // Permettre aux clients ET aux professionnels d'accéder au statut
+    if (!userType || !['user', 'client'].includes(userType)) {
       return res.status(403).json({
         success: false,
         message: 'Accès non autorisé'
@@ -92,7 +93,7 @@ router.get('/status', async (req, res) => {
       success: true,
       data: {
         enabled: assistantAmaniService.isEnabled(),
-        active: professionnelsEnLigne === 0,
+        active: professionnelsEnLigne === 0, // Assistant actif si aucun professionnel connecté
         professionnelsEnLigne,
         model: process.env.OPENAI_MODEL || "gpt-4o-mini"
       }

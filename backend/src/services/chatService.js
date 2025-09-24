@@ -475,7 +475,7 @@ class ChatService {
       // Sauvegarder le message de l'assistant
       const assistantMessageResult = await query(`
         INSERT INTO messages (conversation_id, sender_type, sender_id, message, type_message)
-        VALUES (?, 'assistant', NULL, ?, 'assistant')
+        VALUES (?, 'assistant', 0, ?, 'assistant')
       `, [conversationId, assistantResponse.message]);
 
       // Récupérer le message formaté
@@ -513,7 +513,7 @@ class ChatService {
       try {
         const fallbackResult = await query(`
           INSERT INTO messages (conversation_id, sender_type, sender_id, message, type_message)
-          VALUES (?, 'assistant', NULL, ?, 'assistant')
+          VALUES (?, 'assistant', 0, ?, 'assistant')
         `, [
           conversationId, 
           'Je rencontre une difficulté technique. Un membre de notre équipe vous contactera rapidement.'

@@ -169,7 +169,6 @@ IMPORTANT: Tu dois toujours recommander l'escalade vers un professionnel humain 
       const run = await this.openai.beta.threads.runs.createAndPoll(thread.id, {
         assistant_id: this.assistantId || await this.getOrCreateAssistant(),
         max_completion_tokens: parseInt(process.env.ASSISTANT_MAX_TOKENS) || 500,
-        timeout: parseInt(process.env.ASSISTANT_TIMEOUT) || 30000
       });
 
       if (run.status === 'completed') {
@@ -305,49 +304,49 @@ IMPORTANT: Tu dois toujours recommander l'escalade vers un professionnel humain 
     }
   }
 
-  async getClientContext(clientId) {
-    try {
-      // Récupérer les informations client
-      const clients = await query(`
-        SELECT code_client, nom, prenom, entreprise, email, phone 
-        FROM clients 
-        WHERE id = ? AND statut = 'actif' AND deleted_at IS NULL
-      `, [clientId]);
+async getClientContext(clientId) {
+  try {
+    // Récupérer les informations client
+    const clients = await query(`
+      SELECT code_client, nom, prenom, entreprise, email, telephone 
+      FROM clients 
+      WHERE id = ? AND statut = 'actif' AND deleted_at IS NULL
+    `, [clientId]);
 
-      if (clients.length === 0) {
-        return null;
-      }
-
-      const client = clients[0];
-
-      // Récupérer les factures récentes
-      const factures = await query(`
-        SELECT numero, montant_total, statut, date_creation 
-        FROM factures 
-        WHERE client_id = ? 
-        ORDER BY date_creation DESC 
-        LIMIT 5
-      `, [clientId]);
-
-      // Récupérer la dernière conversation
-      const conversations = await query(`
-        SELECT sujet, dernier_message, derniere_activite 
-        FROM vue_conversations_chat 
-        WHERE client_id = ? 
-        ORDER BY derniere_activite DESC 
-        LIMIT 1
-      `, [clientId]);
-
-      return {
-        ...client,
-        factures_recentes: factures,
-        derniere_conversation: conversations[0]?.dernier_message || null
-      };
-    } catch (error) {
-      console.error('❌ Erreur récupération contexte client:', error);
+    if (clients.length === 0) {
       return null;
     }
+
+    const client = clients[0];
+
+    // Récupérer les factures récentes
+    const factures = await query(`
+      SELECT numero_facture, montant_ttc, statut, date_creation 
+      FROM factures 
+      WHERE client_id = ? 
+      ORDER BY date_creation DESC 
+      LIMIT 5
+    `, [clientId]);
+
+    // Récupérer la dernière conversation
+    const conversations = await query(`
+      SELECT sujet, dernier_message, derniere_activite 
+      FROM vue_conversations_chat 
+      WHERE client_id = ? 
+      ORDER BY derniere_activite DESC 
+      LIMIT 1
+    `, [clientId]);
+
+    return {
+      ...client,
+      factures_recentes: factures,
+      derniere_conversation: conversations[0]?.dernier_message || null
+    };
+  } catch (error) {
+    console.error('❌ Erreur récupération contexte client:', error);
+    return null;
   }
+}
 
   // Méthode pour tester l'assistant
   async testAssistant() {
