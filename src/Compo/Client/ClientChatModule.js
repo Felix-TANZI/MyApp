@@ -116,24 +116,6 @@ const ClientChatModule = ({ onBack }) => {
           <strong>🤖 Assistant Amani</strong> peut vous répondre immédiatement 
           en attendant qu'un membre de notre équipe soit disponible.
         </p>
-        <div className="welcome-features">
-          <div className="feature">
-            <span className="feature-icon">⚡</span>
-            <span>Réponse rapide</span>
-          </div>
-          <div className="feature">
-            <span className="feature-icon">🤖</span>
-            <span>Assistant IA 24/7</span>
-          </div>
-          <div className="feature">
-            <span className="feature-icon">🏨</span>
-            <span>Support professionnel</span>
-          </div>
-          <div className="feature">
-            <span className="feature-icon">🇨🇲</span>
-            <span>Équipe locale</span>
-          </div>
-        </div>
         <button className="start-chat-btn" onClick={handleStartChat} disabled={chat.loading}>
           {chat.loading ? 'Connexion...' : 'Commencer la discussion'}
         </button>
@@ -319,18 +301,6 @@ const ClientChatModule = ({ onBack }) => {
         ) : (
           renderChatInterface()
         )}
-      </div>
-
-      {/* Informations en bas */}
-      <div className="chat-footer">
-        <div className="support-info">
-          <span className="info-text">
-            {chat.isAssistantActive 
-              ? '🤖 Assistant Amani vous aide en attendant notre équipe. Réponses instantanées disponibles.'
-              : '💡 Notre équipe répond généralement en quelques minutes pendant les heures d\'ouverture.'
-            }
-          </span>
-        </div>
       </div>
     </div>
   );
