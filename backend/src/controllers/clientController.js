@@ -278,11 +278,25 @@ const requestProfileUpdate = async (req, res) => {
       pays
     } = req.body;
 
+    console.log('🔍 Demande modification reçue:', {
+      clientId,
+      body: req.body,
+      userType: req.user.type
+    });
+
     // Validation des champs obligatoires
     if (!nom || !prenom) {
       return res.status(400).json({
         success: false,
         message: 'Le nom et prénom sont obligatoires'
+      });
+    }
+
+    // Validation supplémentaire des types
+    if (typeof nom !== 'string' || typeof prenom !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Format des données invalide'
       });
     }
 
@@ -292,6 +306,13 @@ const requestProfileUpdate = async (req, res) => {
       [clientId]
     );
 
+    if (existingRequest.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client introuvable'
+      });
+    }
+
     if (existingRequest[0]?.modification_en_attente) {
       return res.status(400).json({
         success: false,
@@ -299,15 +320,30 @@ const requestProfileUpdate = async (req, res) => {
       });
     }
 
-    // Préparer les nouvelles données
+    // Préparer les nouvelles données avec validation
     const nouvellesDonnees = {
-      nom,
-      prenom,
-      telephone: telephone || null,
-      adresse: adresse || null,
-      ville: ville || 'Yaoundé',
-      pays: pays || 'Cameroun'
+      nom: String(nom).trim(),
+      prenom: String(prenom).trim(),
+      telephone: telephone ? String(telephone).trim() : null,
+      adresse: adresse ? String(adresse).trim() : null,
+      ville: ville ? String(ville).trim() : 'Yaoundé',
+      pays: pays ? String(pays).trim() : 'Cameroun'
     };
+
+    // Validation longueur des champs
+    if (nouvellesDonnees.nom.length < 2 || nouvellesDonnees.nom.length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Le nom doit contenir entre 2 et 100 caractères'
+      });
+    }
+
+    if (nouvellesDonnees.prenom.length < 2 || nouvellesDonnees.prenom.length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Le prénom doit contenir entre 2 et 100 caractères'
+      });
+    }
 
     // Récupérer les infos client pour la notification
     const clientInfo = await query(`
@@ -325,15 +361,44 @@ const requestProfileUpdate = async (req, res) => {
 
     const client = clientInfo[0];
 
-    // Sauvegarder la demande
+    // Vérifier s'il y a réellement des changements
+    const currentData = {
+      nom: client.nom,
+      prenom: client.prenom,
+      telephone: client.telephone,
+      adresse: client.adresse,
+      ville: client.ville,
+      pays: client.pays
+    };
+
+    const hasChanges = Object.keys(nouvellesDonnees).some(key => {
+      const currentValue = currentData[key] || '';
+      const newValue = nouvellesDonnees[key] || '';
+      return currentValue !== newValue;
+    });
+
+    if (!hasChanges) {
+      return res.status(400).json({
+        success: false,
+        message: 'Aucune modification détectée'
+      });
+    }
+
+    console.log('📝 Données à sauvegarder:', nouvellesDonnees);
+
+    // Sauvegarder la demande - CONVERSION EN STRING JSON
+    const jsonData = JSON.stringify(nouvellesDonnees);
+    
     await query(`
       UPDATE clients SET 
         modification_en_attente = ?,
         modification_demandee_le = NOW()
       WHERE id = ?
-    `, [JSON.stringify(nouvellesDonnees), clientId]);
+    `, [jsonData, clientId]);
 
-    // 🆕 NOTIFICATION WEBSOCKET TEMPS RÉEL POUR LES ADMINS
+    console.log('💾 Demande sauvegardée en base');
+
+    // Notifications WebSocket pour les admins
     try {
       // Récupérer tous les admins + créateur du client
       let adminIds = [];
@@ -366,7 +431,9 @@ const requestProfileUpdate = async (req, res) => {
           client_name: clientDisplayName,
           client_code: client.code_client,
           request_type: 'profile_update',
-          requested_changes: nouvellesDonnees
+          requested_changes: nouvellesDonnees,
+          current_values: currentData,
+          changes_summary: getChangesSummary(currentData, nouvellesDonnees)
         }
       };
 
@@ -398,18 +465,46 @@ const requestProfileUpdate = async (req, res) => {
       req.ip
     ]);
 
+    console.log('✅ Demande de modification profil terminée avec succès');
+
     res.json({
       success: true,
-      message: 'Demande de modification envoyée. Elle sera examinée par un administrateur.'
+      message: 'Demande de modification envoyée. Elle sera examinée par un administrateur.',
+      data: {
+        request_id: clientId,
+        requested_changes: nouvellesDonnees,
+        status: 'pending'
+      }
     });
 
   } catch (error) {
-    console.error('Erreur demande modification profil:', error);
+    console.error('❌ Erreur demande modification profil:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur serveur lors de la demande de modification'
+      message: 'Erreur serveur lors de la demande de modification',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
+};
+
+// Fonction utilitaire pour résumer les changements
+const getChangesSummary = (currentData, newData) => {
+  const changes = [];
+  
+  Object.keys(newData).forEach(key => {
+    const currentValue = currentData[key] || '';
+    const newValue = newData[key] || '';
+    
+    if (currentValue !== newValue) {
+      changes.push({
+        field: key,
+        from: currentValue,
+        to: newValue
+      });
+    }
+  });
+  
+  return changes;
 };
 
 // PUT /api/client/password - Demander changement de mot de passe

@@ -1,5 +1,20 @@
 const { query } = require('../utils/auth');
 
+// Fonction utilitaire pour parser le JSON de manière sécurisée
+const safeJsonParse = (data) => {
+  if (!data) return null;
+  if (typeof data === 'object') return data; // Déjà un objet
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data);
+    } catch (error) {
+      console.warn('Erreur parsing JSON:', error.message, 'Data:', data);
+      return null;
+    }
+  }
+  return null;
+};
+
 // Fonction utilitaire pour vérifier les permissions
 const checkRequestPermissions = async (userId, userRole, clientId) => {
   // Les admins ont toujours accès
@@ -126,28 +141,42 @@ const getPendingRequests = async (req, res) => {
       ${userRole !== 'admin' ? 'AND c.created_by = ?' : ''}
     `, userRole !== 'admin' ? [userId] : []);
     
-    // Traiter les demandes pour inclure les détails des modifications
+    // Traiter les demandes pour inclure les détails des modifications - VERSION CORRIGÉE
     const processedRequests = requests.map(request => {
       let modification_details = null;
+      let current_values = null;
       
+      // Parser les nouvelles valeurs demandées
       if (request.modification_en_attente) {
-        try {
-          modification_details = JSON.parse(request.modification_en_attente);
-        } catch (e) {
-          console.error('Erreur parsing modification_en_attente:', e);
-        }
+        modification_details = safeJsonParse(request.modification_en_attente);
+      }
+
+      // Récupérer les valeurs actuelles pour comparaison
+      if (modification_details) {
+        current_values = {
+          nom: request.nom,
+          prenom: request.prenom,
+          telephone: request.telephone,
+          adresse: request.adresse,
+          ville: request.ville,
+          pays: request.pays
+        };
       }
       
       return {
         ...request,
-        modification_details,
+        modification_details, // Nouvelles valeurs demandées
+        current_values, // Valeurs actuelles pour comparaison
         // Masquer les données sensibles
         modification_en_attente: undefined,
         nouveau_mot_de_passe_attente: undefined,
         // Ajouter des indicateurs utiles
         has_password_request: !!request.nouveau_mot_de_passe_attente,
         can_approve: true, // L'utilisateur peut voir = peut approuver
-        urgency: calculateUrgency(request.date_demande)
+        urgency: calculateUrgency(request.date_demande),
+        // Calculer les changements
+        changes: modification_details && current_values ? 
+          getChanges(current_values, modification_details) : null
       };
     });
     
@@ -182,7 +211,41 @@ const getPendingRequests = async (req, res) => {
   }
 };
 
-// POST /api/requests/:id/approve-profile - Approuver modification profil
+// Fonction pour calculer les changements entre valeurs actuelles et demandées
+const getChanges = (currentValues, requestedValues) => {
+  const changes = [];
+  
+  Object.keys(requestedValues).forEach(key => {
+    const currentValue = currentValues[key] || '';
+    const requestedValue = requestedValues[key] || '';
+    
+    if (currentValue !== requestedValue) {
+      changes.push({
+        field: key,
+        field_label: getFieldLabel(key),
+        current_value: currentValue,
+        requested_value: requestedValue
+      });
+    }
+  });
+  
+  return changes;
+};
+
+// Labels des champs en français
+const getFieldLabel = (field) => {
+  const labels = {
+    nom: 'Nom',
+    prenom: 'Prénom',
+    telephone: 'Téléphone',
+    adresse: 'Adresse',
+    ville: 'Ville',
+    pays: 'Pays'
+  };
+  return labels[field] || field;
+};
+
+// POST /api/requests/:id/approve-profile - Approuver modification profil - VERSION CORRIGÉE
 const approveProfileUpdate = async (req, res) => {
   try {
     const { id } = req.params;
@@ -212,7 +275,16 @@ const approveProfileUpdate = async (req, res) => {
     }
     
     const client = clients[0];
-    const nouvellesDonnees = JSON.parse(client.modification_en_attente);
+    
+    // Parser de manière sécurisée - VERSION CORRIGÉE
+    const nouvellesDonnees = safeJsonParse(client.modification_en_attente);
+    
+    if (!nouvellesDonnees) {
+      return res.status(400).json({
+        success: false,
+        message: 'Données de modification invalides'
+      });
+    }
     
     // Sauvegarder les anciennes données pour l'historique
     const anciennesDonnees = {
@@ -224,8 +296,8 @@ const approveProfileUpdate = async (req, res) => {
       pays: client.pays
     };
     
-    // Appliquer les modifications
-    await query(`
+    // Appliquer les modifications avec validation
+    const updateQuery = `
       UPDATE clients SET 
         nom = ?,
         prenom = ?,
@@ -237,15 +309,19 @@ const approveProfileUpdate = async (req, res) => {
         modification_demandee_le = NULL,
         date_modification = CURRENT_TIMESTAMP
       WHERE id = ?
-    `, [
-      nouvellesDonnees.nom,
-      nouvellesDonnees.prenom,
-      nouvellesDonnees.telephone,
-      nouvellesDonnees.adresse,
-      nouvellesDonnees.ville,
-      nouvellesDonnees.pays,
+    `;
+    
+    const updateParams = [
+      nouvellesDonnees.nom || client.nom,
+      nouvellesDonnees.prenom || client.prenom,
+      nouvellesDonnees.telephone || client.telephone,
+      nouvellesDonnees.adresse || client.adresse,
+      nouvellesDonnees.ville || client.ville,
+      nouvellesDonnees.pays || client.pays,
       id
-    ]);
+    ];
+    
+    await query(updateQuery, updateParams);
     
     // Créer une notification pour le client via WebSocket
     try {
@@ -330,7 +406,7 @@ const rejectProfileUpdate = async (req, res) => {
       });
     }
     
-    const rejectedData = JSON.parse(clients[0].modification_en_attente);
+    const rejectedData = safeJsonParse(clients[0].modification_en_attente);
     
     // Supprimer la demande
     await query(`
@@ -725,21 +801,33 @@ const getRequestById = async (req, res) => {
     
     // Traiter les données
     let modification_details = null;
+    let current_values = null;
+    
     if (request.modification_en_attente) {
-      try {
-        modification_details = JSON.parse(request.modification_en_attente);
-      } catch (e) {
-        console.error('Erreur parsing modification_en_attente:', e);
+      modification_details = safeJsonParse(request.modification_en_attente);
+      
+      if (modification_details) {
+        current_values = {
+          nom: request.nom,
+          prenom: request.prenom,
+          telephone: request.telephone,
+          adresse: request.adresse,
+          ville: request.ville,
+          pays: request.pays
+        };
       }
     }
     
     const processedRequest = {
       ...request,
       modification_details,
+      current_values,
       has_password_request: !!request.nouveau_mot_de_passe_attente,
       urgency: calculateUrgency(
         request.modification_demandee_le || request.mot_de_passe_demande_le
       ),
+      changes: modification_details && current_values ? 
+        getChanges(current_values, modification_details) : null,
       history: history.map(h => ({
         ...h,
         user_display_name: h.user_nom ? `${h.user_prenom} ${h.user_nom}` : 'Système'

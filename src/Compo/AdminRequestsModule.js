@@ -395,26 +395,43 @@ const AdminRequestsModule = ({ user }) => {
                   </div>
                   
                   {/* Détails des modifications demandées */}
-                  {request.modification_details && (
-                    <div className="modification-details">
-                      <h5>Modifications demandées:</h5>
-                      <div className="changes-grid">
-                        {Object.entries(request.modification_details).map(([key, value]) => (
-                          <div key={key} className="change-item">
-                            <span className="change-label">
-                              {key === 'nom' ? 'Nom' :
-                               key === 'prenom' ? 'Prénom' :
-                               key === 'telephone' ? 'Téléphone' :
-                               key === 'adresse' ? 'Adresse' :
-                               key === 'ville' ? 'Ville' :
-                               key === 'pays' ? 'Pays' : key}:
-                            </span>
-                            <span className="change-value">{value || 'Non renseigné'}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+{request.modification_details && request.current_values && (
+  <div className="modification-details">
+    <h5>Modifications demandées:</h5>
+    <div className="changes-comparison">
+      {Object.entries(request.modification_details).map(([key, newValue]) => {
+        const currentValue = request.current_values[key] || '';
+        const hasChanged = currentValue !== newValue;
+        
+        if (!hasChanged) return null;
+        
+        return (
+          <div key={key} className="change-comparison-item">
+            <div className="field-name">
+              {key === 'nom' ? 'Nom' :
+               key === 'prenom' ? 'Prénom' :
+               key === 'telephone' ? 'Téléphone' :
+               key === 'adresse' ? 'Adresse' :
+               key === 'ville' ? 'Ville' :
+               key === 'pays' ? 'Pays' : key}:
+            </div>
+            <div className="value-comparison">
+              <div className="value-before">
+                <span className="label">Avant:</span>
+                <span className="value">{currentValue || 'Non renseigné'}</span>
+              </div>
+              <div className="arrow">→</div>
+              <div className="value-after">
+                <span className="label">Après:</span>
+                <span className="value">{newValue || 'Non renseigné'}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+)}
                 </div>
                 
                 <div className="request-actions">
